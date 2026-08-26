@@ -11,9 +11,11 @@ import {
 
 export const ContactUs: React.FC = () => {
   const { showToast } = useApp();
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [role, setRole] = useState('Pemohon');
+  
+  // Demographics
+  const [jantina, setJantina] = useState('Lelaki');
+  const [umur, setUmur] = useState('21-30 tahun');
+  const [bangsa, setBangsa] = useState('Bumiputera Sabah/Sarawak');
   
   // Likert scale 1-5 ratings
   const [s1, setS1] = useState('5');
@@ -27,19 +29,15 @@ export const ContactUs: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !email) {
-      showToast('Sila lengkapkan nama penuh dan emel rasmi anda.', 'error');
-      return;
-    }
     
     try {
       const res = await fetch('/api/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name,
-          email,
-          role,
+          jantina,
+          umur,
+          bangsa,
           s1,
           s2,
           s3,
@@ -163,8 +161,6 @@ export const ContactUs: React.FC = () => {
                 type="button"
                 onClick={() => {
                   setIsSubmitted(false);
-                  setName('');
-                  setEmail('');
                   setComments('');
                   setS1('5');
                   setS2('5');
@@ -179,47 +175,52 @@ export const ContactUs: React.FC = () => {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-6 text-xs">
-              {/* User Bio Details */}
+              {/* Demographic Fields */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1.5">
-                    Nama Penuh <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Nama anda"
-                    required
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-red-500 text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1.5">
-                    Emel Rasmi <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="nama@politeknik.edu.my"
-                    required
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-red-500 text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1.5">
-                    Jawatan / Peranan <span className="text-rose-500">*</span>
+                    Jantina <span className="text-rose-500">*</span>
                   </label>
                   <select
-                    value={role}
-                    onChange={(e) => setRole(e.target.value)}
+                    value={jantina}
+                    onChange={(e) => setJantina(e.target.value)}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-red-500 text-xs"
                   >
-                    <option value="Pemohon">Pemohon (User)</option>
-                    <option value="Pentadbir">Pentadbir (Admin/KUPIK)</option>
+                    <option value="Lelaki">Lelaki</option>
+                    <option value="Perempuan">Perempuan</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1.5">
+                    Umur <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={umur}
+                    onChange={(e) => setUmur(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-red-500 text-xs"
+                  >
+                    <option value="20 tahun ke bawah">20 tahun ke bawah</option>
+                    <option value="21-30 tahun">21-30 tahun</option>
+                    <option value="31-40 tahun">31-40 tahun</option>
+                    <option value="41 tahun ke atas">41 tahun ke atas</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1.5">
+                    Bangsa <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={bangsa}
+                    onChange={(e) => setBangsa(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-red-500 text-xs"
+                  >
+                    <option value="Bumiputera Sabah/Sarawak">Bumiputera Sabah/Sarawak</option>
+                    <option value="Melayu">Melayu</option>
+                    <option value="Cina">Cina</option>
+                    <option value="India">India</option>
+                    <option value="Lain-lain">Lain-lain</option>
                   </select>
                 </div>
               </div>

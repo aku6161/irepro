@@ -66,9 +66,9 @@ interface AuditLog {
 
 interface Feedback {
   id: string;
-  name: string;
-  email: string;
-  role: string;
+  jantina: string;
+  umur: string;
+  bangsa: string;
   s1: number;
   s2: number;
   s3: number;
@@ -1186,18 +1186,15 @@ app.get('/api/audit-logs', (req, res) => {
 
 // 11. Feedback submit & list
 app.post('/api/feedback', async (req, res) => {
-  const { name, email, role, s1, s2, s3, s4, s5, comments } = req.body;
-  if (!name || !email) {
-    return res.status(400).json({ error: 'Nama penuh dan emel rasmi diperlukan.' });
-  }
+  const { jantina, umur, bangsa, s1, s2, s3, s4, s5, comments } = req.body;
 
   const formattedDate = formatDateForSheet(new Date());
   
   // Format matching the feedback columns
   const rowValues = [
-    name.trim(),
-    email.trim(),
-    role || 'Pemohon',
+    jantina || 'Lelaki',
+    umur || '21-30 tahun',
+    bangsa || 'Bumiputera Sabah/Sarawak',
     Number(s1) || 5,
     Number(s2) || 5,
     Number(s3) || 5,
@@ -1218,9 +1215,9 @@ app.post('/api/feedback', async (req, res) => {
 
   const item: Feedback = {
     id: `fb-${Date.now()}`,
-    name: name.trim(),
-    email: email.trim(),
-    role: role || 'Pemohon',
+    jantina: jantina || 'Lelaki',
+    umur: umur || '21-30 tahun',
+    bangsa: bangsa || 'Bumiputera Sabah/Sarawak',
     s1: Number(s1) || 5,
     s2: Number(s2) || 5,
     s3: Number(s3) || 5,
