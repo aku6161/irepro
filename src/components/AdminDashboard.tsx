@@ -366,62 +366,82 @@ export const AdminDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Kad 3: Usability Feedback */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-6">
+        {/* Kad 3: Usability Feedback (Horizontal Progress Bars Style) */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col justify-between">
           {(() => {
             const fbStats = stats?.feedbackStats || { total: 0, s1Avg: 0, s2Avg: 0, s3Avg: 0, s4Avg: 0, s5Avg: 0 };
+            const overallAvg = fbStats.total > 0 
+              ? (fbStats.s1Avg + fbStats.s2Avg + fbStats.s3Avg + fbStats.s4Avg + fbStats.s5Avg) / 5 
+              : 0;
+
             const fbItems = [
-              { key: 'S1', score: fbStats.s1Avg, desc: 'Reka Bentuk' },
-              { key: 'S2', score: fbStats.s2Avg, desc: 'Kemudahan' },
-              { key: 'S3', score: fbStats.s3Avg, desc: 'Kefungsian' },
-              { key: 'S4', score: fbStats.s4Avg, desc: 'Penjimatan Masa' },
-              { key: 'S5', score: fbStats.s5Avg, desc: 'Kepuasan' }
+              { 
+                label: 'Antaramuka sistem iREPRO menarik, kemas dan tersusun', 
+                score: fbStats.s1Avg, 
+                colorClass: 'bg-rose-500 shadow-xs shadow-rose-500/10' 
+              },
+              { 
+                label: 'Sistem iREPRO adalah mudah digunakan dan difahami', 
+                score: fbStats.s2Avg, 
+                colorClass: 'bg-orange-500 shadow-xs shadow-orange-500/10' 
+              },
+              { 
+                label: 'Fungsi penjanaan dokumen berjalan dengan lancar', 
+                score: fbStats.s3Avg, 
+                colorClass: 'bg-amber-400 shadow-xs shadow-amber-400/10' 
+              },
+              { 
+                label: 'Membantu menjimatkan masa pengurusan permohonan', 
+                score: fbStats.s4Avg, 
+                colorClass: 'bg-emerald-500 shadow-xs shadow-emerald-500/10' 
+              },
+              { 
+                label: 'Saya berpuas hati dengan kualiti keseluruhan perkhidmatan', 
+                score: fbStats.s5Avg, 
+                colorClass: 'bg-blue-500 shadow-xs shadow-blue-500/10' 
+              }
             ];
 
             return (
-              <>
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="space-y-5 h-full flex flex-col justify-between">
+                <div className="flex items-start justify-between border-b border-slate-100 pb-3">
                   <div>
-                    <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
-                      <BarChart3 className="w-4 h-4 text-blue-600" />
-                      <span>Maklum Balas Penggunaan iREPRO</span>
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Penilaian Penggunaan iREPRO
                     </h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Purata kriteria penilaian maklum balas ({fbStats.total} responden)
+                    </p>
                   </div>
-                  <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100">
-                    Sistem
-                  </span>
+                  <div className="text-red-500 bg-red-50 px-3 py-1 rounded-xl border border-red-100 font-extrabold text-xs sm:text-sm font-mono whitespace-nowrap">
+                    {overallAvg > 0 ? overallAvg.toFixed(2) : '0.00'} / 5.0
+                  </div>
                 </div>
 
-                <div className="relative pt-2">
-                  {/* Vertical Bar Chart Container */}
-                  <div className="flex items-end justify-around h-44 px-4 bg-slate-50/50 rounded-xl pb-3 border border-slate-100">
-                    {fbItems.map((item) => {
-                      const heightPercent = item.score > 0 ? Math.round((item.score / 5) * 80) : 0;
-                      return (
-                        <div key={item.key} className="h-full flex flex-col justify-end items-center group w-1/5">
-                          {/* Score Label */}
-                          <span className="text-[11px] font-extrabold text-slate-900 mb-1.5 transition-all font-mono">
-                            {item.score > 0 ? item.score.toFixed(1) : '0'}
+                <div className="space-y-4 flex-1 flex flex-col justify-center">
+                  {fbItems.map((item, idx) => {
+                    const widthPercent = item.score > 0 ? Math.round((item.score / 5) * 100) : 0;
+                    return (
+                      <div key={idx} className="space-y-1">
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-[11px] font-semibold text-slate-700 leading-tight">
+                            {item.label}
                           </span>
-                          {/* Vertical Bar */}
-                          <div 
-                            style={{ height: `${heightPercent}%` }} 
-                            className={`w-9 bg-blue-600 rounded-t-md transition-all duration-300 hover:bg-blue-500 relative flex items-end justify-center ${item.score > 0 ? 'shadow-md shadow-blue-500/10' : 'opacity-20'}`}
-                          >
-                            <div className="absolute -top-9 scale-0 group-hover:scale-100 bg-slate-955 text-white text-[9px] px-2 py-1 rounded transition-all z-10 whitespace-nowrap font-mono shadow-md">
-                              {item.desc}: {item.score} / 5.0
-                            </div>
-                          </div>
-                          {/* Criteria Label */}
-                          <span className="text-[11px] font-bold text-slate-600 mt-2.5 font-mono">
-                            {item.key}
+                          <span className="text-xs font-extrabold text-slate-900 font-mono">
+                            {item.score > 0 ? item.score.toFixed(1) : '0.0'}
                           </span>
                         </div>
-                      );
-                    })}
-                  </div>
+                        <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                          <div 
+                            style={{ width: `${widthPercent}%` }} 
+                            className={`h-full rounded-full transition-all duration-500 ${item.colorClass}`}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              </>
+              </div>
             );
           })()}
         </div>
