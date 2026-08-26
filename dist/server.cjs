@@ -1326,11 +1326,27 @@ app.post("/api/auth/admin-login", (req, res) => {
     }
   });
 });
-app.get("/api/applications", (req, res) => {
+app.get("/api/applications", async (req, res) => {
   res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   res.set("Pragma", "no-cache");
   const { icNumber, search, type, category, year, language, limit, page } = req.query;
-  let list = [...db.applications];
+  try {
+    const { applications: freshApps, users: freshUsers } = await syncAllSheets();
+    if (freshApps.length > 0) {
+      db.applications = freshApps;
+      const existingUserMap = new Map(db.users.map((u) => [u.icNumber, u]));
+      freshUsers.forEach((u) => {
+        if (!existingUserMap.has(u.icNumber)) existingUserMap.set(u.icNumber, u);
+      });
+      db.users = Array.from(existingUserMap.values());
+    }
+  } catch (err) {
+    console.warn("[iREPRO] Could not refresh from Sheets, using cached data:", err);
+  }
+  let list = db.applications.map((a) => ({
+    ...a,
+    year: a.createdAt ? new Date(a.createdAt).getFullYear() : Number(a.year)
+  }));
   if (icNumber) {
     const targetIc = String(icNumber).trim();
     const targetDigits = targetIc.replace(/\D/g, "");
@@ -1347,18 +1363,10 @@ app.get("/api/applications", (req, res) => {
       return a.icNumber === targetIc || targetDigits && aIc === targetDigits || a.innovationData?.chiefIc === targetIc || targetDigits && chiefInvIc === targetDigits || a.researchData?.chiefIc === targetIc || targetDigits && chiefResIc === targetDigits || memberInvMatch || memberResMatch;
     });
   }
-  if (type && type !== "ALL") {
-    list = list.filter((a) => a.applicationType === type);
-  }
-  if (category && category !== "ALL") {
-    list = list.filter((a) => a.category === category);
-  }
-  if (year && year !== "ALL") {
-    list = list.filter((a) => a.year === Number(year));
-  }
-  if (language && language !== "ALL") {
-    list = list.filter((a) => a.language === language);
-  }
+  if (type && type !== "ALL") list = list.filter((a) => a.applicationType === type);
+  if (category && category !== "ALL") list = list.filter((a) => a.category === category);
+  if (year && year !== "ALL") list = list.filter((a) => a.year === Number(year));
+  if (language && language !== "ALL") list = list.filter((a) => a.language === language);
   if (search) {
     const q = String(search).toLowerCase().trim();
     list = list.filter(

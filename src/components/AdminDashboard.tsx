@@ -12,7 +12,9 @@ import {
   BookOpen, 
   RefreshCw,
   CheckCircle2,
-  FileText
+  FileText,
+  BarChart3,
+  TrendingUp
 } from 'lucide-react';
 import { downloadDocumentByTemplateKey } from '../utils/docExport';
 import { getDocumentTemplatesForApplication } from '../utils/documentTemplates';
@@ -32,6 +34,38 @@ export const AdminDashboard: React.FC = () => {
   const [filterType, setFilterType] = useState('ALL');
   const [filterYear, setFilterYear] = useState('ALL');
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Calculate dynamic YoY statistics (3 years comparison)
+  const yearsToCompare = (() => {
+    const yearsSet = new Set(applications.map(app => app.createdAt ? new Date(app.createdAt).getFullYear() : Number(app.year)));
+    const sorted = Array.from(yearsSet).sort((a, b) => b - a).filter(y => !isNaN(y) && y > 0);
+    if (sorted.length >= 3) {
+      return sorted.slice(0, 3);
+    }
+    const current = new Date().getFullYear();
+    const fallback = [current, current - 1, current - 2];
+    const merged = Array.from(new Set([...sorted, ...fallback])).sort((a, b) => b - a);
+    return merged.slice(0, 3);
+  })();
+
+  const statsByYear = yearsToCompare.map(yr => {
+    const inovasiCount = applications.filter(app => {
+      const appYear = app.createdAt ? new Date(app.createdAt).getFullYear() : Number(app.year);
+      return appYear === yr && app.applicationType === 'INOVASI';
+    }).length;
+
+    const penyelidikanCount = applications.filter(app => {
+      const appYear = app.createdAt ? new Date(app.createdAt).getFullYear() : Number(app.year);
+      return appYear === yr && app.applicationType === 'PENYELIDIKAN';
+    }).length;
+
+    return {
+      year: yr,
+      inovasi: inovasiCount,
+      penyelidikan: penyelidikanCount,
+      total: inovasiCount + penyelidikanCount
+    };
+  });
 
   const handleDownloadDoc = (app: ApplicationRecord, templateKey: string) => {
     try {
@@ -239,6 +273,80 @@ export const AdminDashboard: React.FC = () => {
           </div>
         </button>
       </div>
+
+      {/* Perbandingan Rekod Mengikut Tahun (3 Tahun Terkini) */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
+          <div>
+            <h2 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+              <BarChart3 className="w-5 h-5 text-red-600" />
+              <span>Analisis Perbandingan Rekod Mengikut Tahun</span>
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Pecahan jumlah permohonan Projek Inovasi dan Kertas Penyelidikan bagi 3 tahun terkini.
+            </p>
+          </div>
+          <div className="inline-flex items-center space-x-1.5 text-xs text-red-600 font-bold bg-red-50 border border-red-100 px-3 py-1.5 rounded-xl">
+            <TrendingUp className="w-4 h-4" />
+            <span>Kemas Kini Automatik</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {statsByYear.map((yrStats) => {
+            const inovasiPct = yrStats.total > 0 ? Math.round((yrStats.inovasi / yrStats.total) * 100) : 0;
+            const penyelidikanPct = yrStats.total > 0 ? Math.round((yrStats.penyelidikan / yrStats.total) * 100) : 0;
+
+            return (
+              <div key={yrStats.year} className="bg-slate-50/50 rounded-xl border border-slate-100 p-5 space-y-4 hover:shadow-xs transition-shadow">
+                {/* Year Header & Total */}
+                <div className="flex items-end justify-between">
+                  <span className="text-2xl font-black text-slate-800 tracking-tight font-mono">{yrStats.year}</span>
+                  <div className="text-right">
+                    <span className="text-xs font-semibold text-slate-500 uppercase block tracking-wider">Jumlah Rekod</span>
+                    <span className="text-lg font-extrabold text-slate-950">{yrStats.total} permohonan</span>
+                  </div>
+                </div>
+
+                {/* Progress bar split visualizer */}
+                <div className="space-y-1.5">
+                  <div className="h-3 w-full bg-slate-200 rounded-full flex overflow-hidden">
+                    {yrStats.total > 0 ? (
+                      <>
+                        <div style={{ width: `${inovasiPct}%` }} className="bg-red-600 h-full transition-all" title={`Inovasi: ${inovasiPct}%`} />
+                        <div style={{ width: `${penyelidikanPct}%` }} className="bg-emerald-600 h-full transition-all" title={`Penyelidikan: ${penyelidikanPct}%`} />
+                      </>
+                    ) : (
+                      <div className="w-full bg-slate-200 h-full" />
+                    )}
+                  </div>
+                  {yrStats.total > 0 ? (
+                    <div className="flex items-center justify-between text-[10px] text-slate-500">
+                      <span>Inovasi ({inovasiPct}%)</span>
+                      <span>Penyelidikan ({penyelidikanPct}%)</span>
+                    </div>
+                  ) : (
+                    <div className="text-[10px] text-slate-400 italic">Tiada data direkodkan</div>
+                  )}
+                </div>
+
+                {/* Legend details */}
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100/80">
+                  <div className="bg-white rounded-lg p-2.5 border border-slate-100 text-center">
+                    <span className="block text-[10px] font-bold text-red-600 uppercase tracking-wider">Inovasi</span>
+                    <span className="text-base font-extrabold text-slate-900">{yrStats.inovasi}</span>
+                  </div>
+                  <div className="bg-white rounded-lg p-2.5 border border-slate-100 text-center">
+                    <span className="block text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Penyelidikan</span>
+                    <span className="text-base font-extrabold text-slate-900">{yrStats.penyelidikan}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
 
       {/* SEMUA PERMOHONAN TABLE (Directly embedded in Dashboard Admin) */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
