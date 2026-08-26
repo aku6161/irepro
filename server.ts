@@ -484,7 +484,10 @@ async function refreshFromGoogleSheets(): Promise<boolean> {
   if (isSyncing) return false;
   isSyncing = true;
   try {
-    const { applications, users } = await syncAllSheets();
+    const { applications, users, feedbacks } = await syncAllSheets();
+    if (feedbacks && feedbacks.length > 0) {
+      db.feedback = feedbacks;
+    }
     if (applications.length > 0) {
       db.applications = applications;
       // Merge users so registered users remain available
@@ -496,7 +499,7 @@ async function refreshFromGoogleSheets(): Promise<boolean> {
       });
       db.users = Array.from(existingUserMap.values());
       lastSyncTime = new Date().toISOString();
-      console.log(`[iREPRO Server] Successfully synced ${applications.length} applications from Google Sheets!`);
+      console.log(`[iREPRO Server] Successfully synced ${applications.length} applications and ${feedbacks ? feedbacks.length : 0} feedbacks from Google Sheets!`);
       isInitialSyncDone = true;
       return true;
     }
@@ -1166,6 +1169,26 @@ app.get('/api/stats', (req, res) => {
     count: instCounts[inst],
   })).sort((a, b) => b.count - a.count);
 
+  // Calculate Usability Ratings averages (S1 to S5)
+  const totalFeedback = db.feedback.length;
+  let s1Sum = 0, s2Sum = 0, s3Sum = 0, s4Sum = 0, s5Sum = 0;
+  db.feedback.forEach((f) => {
+    s1Sum += Number(f.s1) || 0;
+    s2Sum += Number(f.s2) || 0;
+    s3Sum += Number(f.s3) || 0;
+    s4Sum += Number(f.s4) || 0;
+    s5Sum += Number(f.s5) || 0;
+  });
+
+  const feedbackStats = {
+    total: totalFeedback,
+    s1Avg: totalFeedback > 0 ? Number((s1Sum / totalFeedback).toFixed(2)) : 0,
+    s2Avg: totalFeedback > 0 ? Number((s2Sum / totalFeedback).toFixed(2)) : 0,
+    s3Avg: totalFeedback > 0 ? Number((s3Sum / totalFeedback).toFixed(2)) : 0,
+    s4Avg: totalFeedback > 0 ? Number((s4Sum / totalFeedback).toFixed(2)) : 0,
+    s5Avg: totalFeedback > 0 ? Number((s5Sum / totalFeedback).toFixed(2)) : 0,
+  };
+
   res.json({
     totalApplications,
     totalInnovation,
@@ -1176,6 +1199,7 @@ app.get('/api/stats', (req, res) => {
     byYear,
     byCategory,
     byInstitution,
+    feedbackStats,
   });
 });
 

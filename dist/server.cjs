@@ -126,6 +126,7 @@ async function syncAllSheets() {
   console.log(`[Google Sheets] Loading records directly from Google Sheets: ${GOOGLE_SPREADSHEET_ID}...`);
   const syncedApps = [];
   const userMap = /* @__PURE__ */ new Map();
+  const feedbacks = [];
   try {
     const nameToIcMap = /* @__PURE__ */ new Map();
     try {
@@ -566,13 +567,38 @@ async function syncAllSheets() {
         });
       }
     });
+    try {
+      const fbRows = await fetchSheetData("maklum balas");
+      fbRows.forEach((r, idx) => {
+        const vals = parseRowCells(r);
+        if (idx === 0 && (vals[0].toUpperCase().includes("JANTINA") || vals[0].toUpperCase().includes("NAMA"))) return;
+        if (!vals[0] && !vals[1] && !vals[8]) return;
+        feedbacks.push({
+          id: `sheet-fb-${idx + 1}`,
+          jantina: vals[0] || "Lelaki",
+          umur: vals[1] || "21-30 tahun",
+          bangsa: vals[2] || "Bumiputera Sabah/Sarawak",
+          s1: Number(vals[3]) || 5,
+          s2: Number(vals[4]) || 5,
+          s3: Number(vals[5]) || 5,
+          s4: Number(vals[6]) || 5,
+          s5: Number(vals[7]) || 5,
+          comments: vals[8] || "",
+          createdAt: vals[9] || (/* @__PURE__ */ new Date()).toISOString()
+        });
+      });
+      console.log(`[Google Sheets] Loaded ${feedbacks.length} feedbacks from maklum balas tab.`);
+    } catch (e) {
+      console.warn("[Google Sheets] Could not load maklum balas tab:", e);
+    }
     console.log(`[Google Sheets] Loaded ${syncedApps.length} applications and ${userMap.size} user accounts from Google Sheets.`);
   } catch (err) {
     console.error("[Google Sheets] Error in syncAllSheets:", err);
   }
   return {
     applications: syncedApps,
-    users: Array.from(userMap.values())
+    users: Array.from(userMap.values()),
+    feedbacks
   };
 }
 function prepareSheetRow(record) {
@@ -1155,7 +1181,10 @@ async function refreshFromGoogleSheets() {
   if (isSyncing) return false;
   isSyncing = true;
   try {
-    const { applications, users } = await syncAllSheets();
+    const { applications, users, feedbacks } = await syncAllSheets();
+    if (feedbacks && feedbacks.length > 0) {
+      db.feedback = feedbacks;
+    }
     if (applications.length > 0) {
       db.applications = applications;
       const existingUserMap = new Map(db.users.map((u) => [u.icNumber, u]));
@@ -1166,7 +1195,7 @@ async function refreshFromGoogleSheets() {
       });
       db.users = Array.from(existingUserMap.values());
       lastSyncTime = (/* @__PURE__ */ new Date()).toISOString();
-      console.log(`[iREPRO Server] Successfully synced ${applications.length} applications from Google Sheets!`);
+      console.log(`[iREPRO Server] Successfully synced ${applications.length} applications and ${feedbacks ? feedbacks.length : 0} feedbacks from Google Sheets!`);
       isInitialSyncDone = true;
       return true;
     }
@@ -1690,6 +1719,23 @@ app.get("/api/stats", (req, res) => {
     institution: inst,
     count: instCounts[inst]
   })).sort((a, b) => b.count - a.count);
+  const totalFeedback = db.feedback.length;
+  let s1Sum = 0, s2Sum = 0, s3Sum = 0, s4Sum = 0, s5Sum = 0;
+  db.feedback.forEach((f) => {
+    s1Sum += Number(f.s1) || 0;
+    s2Sum += Number(f.s2) || 0;
+    s3Sum += Number(f.s3) || 0;
+    s4Sum += Number(f.s4) || 0;
+    s5Sum += Number(f.s5) || 0;
+  });
+  const feedbackStats = {
+    total: totalFeedback,
+    s1Avg: totalFeedback > 0 ? Number((s1Sum / totalFeedback).toFixed(2)) : 0,
+    s2Avg: totalFeedback > 0 ? Number((s2Sum / totalFeedback).toFixed(2)) : 0,
+    s3Avg: totalFeedback > 0 ? Number((s3Sum / totalFeedback).toFixed(2)) : 0,
+    s4Avg: totalFeedback > 0 ? Number((s4Sum / totalFeedback).toFixed(2)) : 0,
+    s5Avg: totalFeedback > 0 ? Number((s5Sum / totalFeedback).toFixed(2)) : 0
+  };
   res.json({
     totalApplications,
     totalInnovation,
@@ -1699,7 +1745,8 @@ app.get("/api/stats", (req, res) => {
     currentYearResearch,
     byYear,
     byCategory,
-    byInstitution
+    byInstitution,
+    feedbackStats
   });
 });
 app.get("/api/audit-logs", (req, res) => {

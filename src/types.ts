@@ -164,6 +164,14 @@ export interface StatsOverview {
     institution: string;
     count: number;
   }[];
+  feedbackStats?: {
+    total: number;
+    s1Avg: number;
+    s2Avg: number;
+    s3Avg: number;
+    s4Avg: number;
+    s5Avg: number;
+  };
 }
 
 export const formatCategoryLabel = (cat?: ResearchCategory | string): string => {

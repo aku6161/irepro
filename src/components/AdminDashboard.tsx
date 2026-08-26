@@ -274,8 +274,8 @@ export const AdminDashboard: React.FC = () => {
         </button>
       </div>
 
-      {/* Perbandingan Rekod Mengikut Jenis (2 Kad Asing dengan Carta Bar Menegak) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Perbandingan Rekod Mengikut Jenis (3 Kad Asing dengan Carta Bar Menegak) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Kad 1: Inovasi */}
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-6">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -370,6 +370,69 @@ export const AdminDashboard: React.FC = () => {
               })}
             </div>
           </div>
+        </div>
+
+        {/* Kad 3: Usability Feedback */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-6">
+          {(() => {
+            const fbStats = stats?.feedbackStats || { total: 0, s1Avg: 0, s2Avg: 0, s3Avg: 0, s4Avg: 0, s5Avg: 0 };
+            const fbItems = [
+              { key: 'S1', score: fbStats.s1Avg, desc: 'Reka Bentuk' },
+              { key: 'S2', score: fbStats.s2Avg, desc: 'Kemudahan' },
+              { key: 'S3', score: fbStats.s3Avg, desc: 'Kefungsian' },
+              { key: 'S4', score: fbStats.s4Avg, desc: 'Penjimatan Masa' },
+              { key: 'S5', score: fbStats.s5Avg, desc: 'Kepuasan' }
+            ];
+
+            return (
+              <>
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                      <BarChart3 className="w-4 h-4 text-blue-600" />
+                      <span>Maklum Balas Penggunaan iREPRO</span>
+                    </h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Purata skor (1-5) bagi 5 kriteria penilaian ({fbStats.total} maklum balas).
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100">
+                    Sistem
+                  </span>
+                </div>
+
+                <div className="relative pt-2">
+                  {/* Vertical Bar Chart Container */}
+                  <div className="flex items-end justify-around h-44 px-4 bg-slate-50/50 rounded-xl pb-3 border border-slate-100">
+                    {fbItems.map((item) => {
+                      const heightPercent = item.score > 0 ? Math.round((item.score / 5) * 80) : 0;
+                      return (
+                        <div key={item.key} className="h-full flex flex-col justify-end items-center group w-1/5">
+                          {/* Score Label */}
+                          <span className="text-[11px] font-extrabold text-slate-900 mb-1.5 transition-all font-mono">
+                            {item.score > 0 ? item.score.toFixed(1) : '0'}
+                          </span>
+                          {/* Vertical Bar */}
+                          <div 
+                            style={{ height: `${heightPercent}%` }} 
+                            className={`w-9 bg-blue-600 rounded-t-md transition-all duration-300 hover:bg-blue-500 relative flex items-end justify-center ${item.score > 0 ? 'shadow-md shadow-blue-500/10' : 'opacity-20'}`}
+                          >
+                            <div className="absolute -top-9 scale-0 group-hover:scale-100 bg-slate-955 text-white text-[9px] px-2 py-1 rounded transition-all z-10 whitespace-nowrap font-mono shadow-md">
+                              {item.desc}: {item.score} / 5.0
+                            </div>
+                          </div>
+                          {/* Criteria Label */}
+                          <span className="text-[11px] font-bold text-slate-600 mt-2.5 font-mono">
+                            {item.key}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            );
+          })()}
         </div>
       </div>
 

@@ -93,11 +93,12 @@ function parseRowCells(r: any): string[] {
 }
 
 // Sync all 3 sheets: inovasi, lampiran a, and PPP
-export async function syncAllSheets(): Promise<{ applications: any[]; users: any[] }> {
+export async function syncAllSheets(): Promise<{ applications: any[]; users: any[]; feedbacks: any[] }> {
   console.log(`[Google Sheets] Loading records directly from Google Sheets: ${GOOGLE_SPREADSHEET_ID}...`);
 
   const syncedApps: any[] = [];
   const userMap = new Map<string, any>();
+  const feedbacks: any[] = [];
 
   try {
     // 0. Fetch User Tab to build Name -> IC lookup map
@@ -597,6 +598,32 @@ export async function syncAllSheets(): Promise<{ applications: any[]; users: any
       }
     });
 
+    // 4. Fetch Feedback Tab (maklum balas)
+    try {
+      const fbRows = await fetchSheetData('maklum balas');
+      fbRows.forEach((r: any, idx: number) => {
+        const vals = parseRowCells(r);
+        if (idx === 0 && (vals[0].toUpperCase().includes('JANTINA') || vals[0].toUpperCase().includes('NAMA'))) return;
+        if (!vals[0] && !vals[1] && !vals[8]) return;
+        feedbacks.push({
+          id: `sheet-fb-${idx + 1}`,
+          jantina: vals[0] || 'Lelaki',
+          umur: vals[1] || '21-30 tahun',
+          bangsa: vals[2] || 'Bumiputera Sabah/Sarawak',
+          s1: Number(vals[3]) || 5,
+          s2: Number(vals[4]) || 5,
+          s3: Number(vals[5]) || 5,
+          s4: Number(vals[6]) || 5,
+          s5: Number(vals[7]) || 5,
+          comments: vals[8] || '',
+          createdAt: vals[9] || new Date().toISOString()
+        });
+      });
+      console.log(`[Google Sheets] Loaded ${feedbacks.length} feedbacks from maklum balas tab.`);
+    } catch (e) {
+      console.warn('[Google Sheets] Could not load maklum balas tab:', e);
+    }
+
     console.log(`[Google Sheets] Loaded ${syncedApps.length} applications and ${userMap.size} user accounts from Google Sheets.`);
   } catch (err: any) {
     console.error('[Google Sheets] Error in syncAllSheets:', err);
@@ -605,6 +632,7 @@ export async function syncAllSheets(): Promise<{ applications: any[]; users: any
   return {
     applications: syncedApps,
     users: Array.from(userMap.values()),
+    feedbacks: feedbacks,
   };
 }
 

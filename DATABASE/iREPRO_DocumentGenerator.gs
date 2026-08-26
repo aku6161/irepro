@@ -157,7 +157,7 @@ function doPost(e) {
     var payload = JSON.parse(e.postData.contents);
 
     // ── ACTION: appendRow ── Tulis baris terus ke Google Sheet
-    if (payload.action === "appendRow" || (payload.targetSheet && payload.action !== "updateRow")) {
+    if (payload.action === "appendRow" || (payload.targetSheet && payload.action !== "updateRow" && payload.action !== "deleteRow")) {
       var sheetId = payload.spreadsheetId || "1PEMSNeV9dnY4LZZpbE_CpcIJqccJ3SjPnCZ9fAN5uBY";
       var ss = SpreadsheetApp.openById(sheetId);
       var sheet = ss.getSheetByName(payload.targetSheet);
@@ -206,6 +206,32 @@ function doPost(e) {
       var range = sheet.getRange(sheetRow, 1, 1, payload.rowValues.length);
       range.setValues([payload.rowValues]);
       return createJsonResponse({ success: true, message: "Berjaya kemaskini baris " + sheetRow + " di " + payload.targetSheet });
+    }
+
+    // ── ACTION: deleteRow ── Padam baris terus dari Google Sheet
+    if (payload.action === "deleteRow" && payload.targetSheet && payload.rowIndex !== undefined) {
+      var sheetId = payload.spreadsheetId || "1PEMSNeV9dnY4LZZpbE_CpcIJqccJ3SjPnCZ9fAN5uBY";
+      var ss = SpreadsheetApp.openById(sheetId);
+      var sheet = ss.getSheetByName(payload.targetSheet);
+      if (!sheet) {
+        var sheets = ss.getSheets();
+        for (var i = 0; i < sheets.length; i++) {
+          if (sheets[i].getName().toLowerCase() === payload.targetSheet.toLowerCase()) {
+            sheet = sheets[i];
+            break;
+          }
+        }
+      }
+      if (!sheet) {
+        return createJsonResponse({ success: false, error: "Sheet '" + payload.targetSheet + "' tidak dijumpai." });
+      }
+      var rowIndex = parseInt(payload.rowIndex);
+      var sheetRow = rowIndex + 2; // +1 for header row, +1 for 1-based index
+      if (sheetRow < 2 || sheetRow > sheet.getLastRow()) {
+        return createJsonResponse({ success: false, error: "Row index " + sheetRow + " di luar had sheet." });
+      }
+      sheet.deleteRow(sheetRow);
+      return createJsonResponse({ success: true, message: "Berjaya padam baris " + sheetRow + " dari " + payload.targetSheet });
     }
 
     // ── ACTION: Jana dokumen dari template Google Docs ──
