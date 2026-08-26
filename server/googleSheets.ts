@@ -100,6 +100,24 @@ export async function syncAllSheets(): Promise<{ applications: any[]; users: any
   const userMap = new Map<string, any>();
 
   try {
+    // 0. Fetch User Tab to build Name -> IC lookup map
+    const nameToIcMap = new Map<string, string>();
+    try {
+      const userRows = await fetchSheetData('user');
+      userRows.forEach((r: any, idx: number) => {
+        const vals = parseRowCells(r);
+        if (idx === 0) return;
+        const userName = (vals[1] || '').trim().toUpperCase();
+        const userIc = (vals[2] || '').trim();
+        if (userName && userIc) {
+          nameToIcMap.set(userName, userIc);
+        }
+      });
+      console.log(`[Google Sheets] Loaded ${nameToIcMap.size} user mapping entries.`);
+    } catch (e) {
+      console.warn('[Google Sheets] Could not load user tab for name-to-IC lookup:', e);
+    }
+
     // 1. Fetch Inovasi Sheet
     const inovasiRows = await fetchSheetData('inovasi');
     inovasiRows.forEach((r: any, idx: number) => {
@@ -114,12 +132,17 @@ export async function syncAllSheets(): Promise<{ applications: any[]; users: any
       const appId = vals[20] || `IREPRO-INV-2026-${seq}`;
       const chiefEmail = vals[19] || '';
 
-      // Chief IC from Sheet Col B (vals[1]) or format standard 12-digit
+      // Chief IC from Sheet Col B (vals[1]) - look up by name if empty/placeholder
       let chiefIc = (vals[1] || '').trim();
+      const normalizedName = applicantName.trim();
+      if ((!chiefIc || chiefIc.length < 5 || chiefIc.replace(/\D/g, '').startsWith('83010112')) && nameToIcMap.has(normalizedName)) {
+        chiefIc = nameToIcMap.get(normalizedName)!;
+      }
+
       const chiefDigits = chiefIc.replace(/\D/g, '');
       if (chiefDigits.length === 12) {
         chiefIc = `${chiefDigits.slice(0, 6)}-${chiefDigits.slice(6, 8)}-${chiefDigits.slice(8, 12)}`;
-      } else if (!chiefIc) {
+      } else if (!chiefIc || chiefIc.length < 5) {
         const fallbackDigits = `83010112${String(1000 + idx).slice(-4)}`;
         chiefIc = `${fallbackDigits.slice(0, 6)}-${fallbackDigits.slice(6, 8)}-${fallbackDigits.slice(8, 12)}`;
       }
@@ -129,6 +152,9 @@ export async function syncAllSheets(): Promise<{ applications: any[]; users: any
       // Member 1
       const m1Name = (vals[3] || '').toUpperCase();
       let m1Ic = (vals[4] || '').trim();
+      if ((!m1Ic || m1Ic.length < 5) && m1Name && nameToIcMap.has(m1Name.trim())) {
+        m1Ic = nameToIcMap.get(m1Name.trim())!;
+      }
       const m1Digits = m1Ic.replace(/\D/g, '');
       if (m1Digits.length === 12) {
         m1Ic = `${m1Digits.slice(0, 6)}-${m1Digits.slice(6, 8)}-${m1Digits.slice(8, 12)}`;
@@ -138,6 +164,9 @@ export async function syncAllSheets(): Promise<{ applications: any[]; users: any
       // Member 2
       const m2Name = (vals[6] || '').toUpperCase();
       let m2Ic = (vals[7] || '').trim();
+      if ((!m2Ic || m2Ic.length < 5) && m2Name && nameToIcMap.has(m2Name.trim())) {
+        m2Ic = nameToIcMap.get(m2Name.trim())!;
+      }
       const m2Digits = m2Ic.replace(/\D/g, '');
       if (m2Digits.length === 12) {
         m2Ic = `${m2Digits.slice(0, 6)}-${m2Digits.slice(6, 8)}-${m2Digits.slice(8, 12)}`;
@@ -272,8 +301,14 @@ export async function syncAllSheets(): Promise<{ applications: any[]; users: any
 
       if (idx === 0 && vals[1].toUpperCase().includes('KAD PENGENALAN')) return;
       const applicantName = (vals[0] || '').toUpperCase();
-      const rawIc = vals[1] || '';
+      
+      let rawIc = vals[1] || '';
+      const normalizedName = applicantName.trim();
+      if ((!rawIc || rawIc.length < 5 || rawIc.includes('820825-06-556')) && nameToIcMap.has(normalizedName)) {
+        rawIc = nameToIcMap.get(normalizedName)!;
+      }
       const icNumber = formatIc(rawIc) || `820825-06-556${idx}`;
+
       const title = vals[18] || '';
       if (!applicantName && !title) return;
 
@@ -302,6 +337,19 @@ export async function syncAllSheets(): Promise<{ applications: any[]; users: any
       const recordYear = parsedDate ? parsedDate.getFullYear() : 2026;
       const recordCreatedAt = parsedDate ? parsedDate.toISOString() : new Date().toISOString();
 
+      // Resolve member ICs from user mapping if blank
+      const m1Name = (vals[5] || '').toUpperCase().trim();
+      let m1Ic = (vals[6] || '').trim();
+      if ((!m1Ic || m1Ic.length < 5) && m1Name && nameToIcMap.has(m1Name)) {
+        m1Ic = nameToIcMap.get(m1Name)!;
+      }
+
+      const m2Name = (vals[10] || '').toUpperCase().trim();
+      let m2Ic = (vals[11] || '').trim();
+      if ((!m2Ic || m2Ic.length < 5) && m2Name && nameToIcMap.has(m2Name)) {
+        m2Ic = nameToIcMap.get(m2Name)!;
+      }
+
       const resRecord = {
         id: `sheet-lampA-${idx + 1}`,
         applicationId: appId,
@@ -325,8 +373,8 @@ export async function syncAllSheets(): Promise<{ applications: any[]; users: any
           department: vals[3] || 'Unit Penyelidikan & Inovasi',
           institution: vals[4] || 'Kolej Komuniti Beaufort',
           members: [
-            vals[5] ? { id: `m-1`, name: (vals[5] || '').toUpperCase(), icNumber: formatIc(vals[6]), phone: vals[7] || '', department: vals[8] || '', institution: vals[9] || 'Kolej Komuniti Beaufort' } : null,
-            vals[10] ? { id: `m-2`, name: (vals[10] || '').toUpperCase(), icNumber: formatIc(vals[11]), phone: vals[12] || '', department: vals[13] || '', institution: vals[14] || 'Kolej Komuniti Beaufort' } : null,
+            vals[5] ? { id: `m-1`, name: m1Name, icNumber: formatIc(m1Ic), phone: vals[7] || '', department: vals[8] || '', institution: vals[9] || 'Kolej Komuniti Beaufort' } : null,
+            vals[10] ? { id: `m-2`, name: m2Name, icNumber: formatIc(m2Ic), phone: vals[12] || '', department: vals[13] || '', institution: vals[14] || 'Kolej Komuniti Beaufort' } : null,
           ].filter(Boolean),
           adminInfo: {
             kupikName: vals[15] || 'NORFAZIRAH BINTI KUSIN',
@@ -427,7 +475,12 @@ export async function syncAllSheets(): Promise<{ applications: any[]; users: any
 
       if (idx === 0 && vals[1].toUpperCase().includes('KAD PENGENALAN')) return;
       const applicantName = (vals[0] || '').toUpperCase();
-      const rawIc = vals[1] || '';
+      
+      let rawIc = vals[1] || '';
+      const normalizedName = applicantName.trim();
+      if ((!rawIc || rawIc.length < 5 || rawIc.includes('830101-12-123')) && nameToIcMap.has(normalizedName)) {
+        rawIc = nameToIcMap.get(normalizedName)!;
+      }
       const icNumber = formatIc(rawIc) || `830101-12-123${idx}`;
       const title = vals[10] || '';
       if (!applicantName && !title) return;

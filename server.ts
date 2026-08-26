@@ -11,6 +11,7 @@ import {
   prepareSheetRow,
   appendRowToGoogleSheet,
   formatIc,
+  formatDateForSheet,
 } from './server/googleSheets.js';
 
 const app = express();
@@ -67,9 +68,13 @@ interface Feedback {
   id: string;
   name: string;
   email: string;
-  feedback: string;
-  suggestion: string;
-  rating: number;
+  role: string;
+  s1: number;
+  s2: number;
+  s3: number;
+  s4: number;
+  s5: number;
+  comments: string;
   createdAt: string;
 }
 
@@ -1180,25 +1185,54 @@ app.get('/api/audit-logs', (req, res) => {
 });
 
 // 11. Feedback submit & list
-app.post('/api/feedback', (req, res) => {
-  const { name, email, feedback, suggestion, rating } = req.body;
-  if (!name || !email || !feedback) {
-    return res.status(400).json({ error: 'Nama, emel dan maklum balas diperlukan.' });
+app.post('/api/feedback', async (req, res) => {
+  const { name, email, role, s1, s2, s3, s4, s5, comments } = req.body;
+  if (!name || !email) {
+    return res.status(400).json({ error: 'Nama penuh dan emel rasmi diperlukan.' });
+  }
+
+  const formattedDate = formatDateForSheet(new Date());
+  
+  // Format matching the feedback columns
+  const rowValues = [
+    name.trim(),
+    email.trim(),
+    role || 'Pemohon',
+    Number(s1) || 5,
+    Number(s2) || 5,
+    Number(s3) || 5,
+    Number(s4) || 5,
+    Number(s5) || 5,
+    comments?.trim() || '',
+    formattedDate
+  ];
+
+  try {
+    const authHeader = req.headers.authorization;
+    const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : undefined;
+    await appendRowToGoogleSheet('maklum balas', rowValues, bearerToken);
+    console.log(`[iREPRO Server] Successfully appended feedback to 'maklum balas' sheet tab.`);
+  } catch (err) {
+    console.warn('[iREPRO Server] Could not write feedback to Google Sheets:', err);
   }
 
   const item: Feedback = {
     id: `fb-${Date.now()}`,
     name: name.trim(),
     email: email.trim(),
-    feedback: feedback.trim(),
-    suggestion: suggestion?.trim() || '',
-    rating: Number(rating) || 5,
+    role: role || 'Pemohon',
+    s1: Number(s1) || 5,
+    s2: Number(s2) || 5,
+    s3: Number(s3) || 5,
+    s4: Number(s4) || 5,
+    s5: Number(s5) || 5,
+    comments: comments?.trim() || '',
     createdAt: new Date().toISOString(),
   };
 
   db.feedback.push(item);
   saveDb();
-  res.json({ success: true, message: 'Maklum balas berjaya dihantar. Terima kasih!' });
+  res.json({ success: true, message: 'Maklum balas penggunaan iREPRO berjaya direkodkan. Terima kasih!' });
 });
 
 app.get('/api/feedback', (req, res) => {

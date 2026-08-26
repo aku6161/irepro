@@ -127,6 +127,22 @@ async function syncAllSheets() {
   const syncedApps = [];
   const userMap = /* @__PURE__ */ new Map();
   try {
+    const nameToIcMap = /* @__PURE__ */ new Map();
+    try {
+      const userRows = await fetchSheetData("user");
+      userRows.forEach((r, idx) => {
+        const vals = parseRowCells(r);
+        if (idx === 0) return;
+        const userName = (vals[1] || "").trim().toUpperCase();
+        const userIc = (vals[2] || "").trim();
+        if (userName && userIc) {
+          nameToIcMap.set(userName, userIc);
+        }
+      });
+      console.log(`[Google Sheets] Loaded ${nameToIcMap.size} user mapping entries.`);
+    } catch (e) {
+      console.warn("[Google Sheets] Could not load user tab for name-to-IC lookup:", e);
+    }
     const inovasiRows = await fetchSheetData("inovasi");
     inovasiRows.forEach((r, idx) => {
       const vals = parseRowCells(r);
@@ -138,16 +154,23 @@ async function syncAllSheets() {
       const appId = vals[20] || `IREPRO-INV-2026-${seq}`;
       const chiefEmail = vals[19] || "";
       let chiefIc = (vals[1] || "").trim();
+      const normalizedName = applicantName.trim();
+      if ((!chiefIc || chiefIc.length < 5 || chiefIc.replace(/\D/g, "").startsWith("83010112")) && nameToIcMap.has(normalizedName)) {
+        chiefIc = nameToIcMap.get(normalizedName);
+      }
       const chiefDigits = chiefIc.replace(/\D/g, "");
       if (chiefDigits.length === 12) {
         chiefIc = `${chiefDigits.slice(0, 6)}-${chiefDigits.slice(6, 8)}-${chiefDigits.slice(8, 12)}`;
-      } else if (!chiefIc) {
+      } else if (!chiefIc || chiefIc.length < 5) {
         const fallbackDigits = `83010112${String(1e3 + idx).slice(-4)}`;
         chiefIc = `${fallbackDigits.slice(0, 6)}-${fallbackDigits.slice(6, 8)}-${fallbackDigits.slice(8, 12)}`;
       }
       const institution = vals[2] || "KOLEJ KOMUNITI BEAUFORT";
       const m1Name = (vals[3] || "").toUpperCase();
       let m1Ic = (vals[4] || "").trim();
+      if ((!m1Ic || m1Ic.length < 5) && m1Name && nameToIcMap.has(m1Name.trim())) {
+        m1Ic = nameToIcMap.get(m1Name.trim());
+      }
       const m1Digits = m1Ic.replace(/\D/g, "");
       if (m1Digits.length === 12) {
         m1Ic = `${m1Digits.slice(0, 6)}-${m1Digits.slice(6, 8)}-${m1Digits.slice(8, 12)}`;
@@ -155,6 +178,9 @@ async function syncAllSheets() {
       const m1Inst = vals[5] || institution;
       const m2Name = (vals[6] || "").toUpperCase();
       let m2Ic = (vals[7] || "").trim();
+      if ((!m2Ic || m2Ic.length < 5) && m2Name && nameToIcMap.has(m2Name.trim())) {
+        m2Ic = nameToIcMap.get(m2Name.trim());
+      }
       const m2Digits = m2Ic.replace(/\D/g, "");
       if (m2Digits.length === 12) {
         m2Ic = `${m2Digits.slice(0, 6)}-${m2Digits.slice(6, 8)}-${m2Digits.slice(8, 12)}`;
@@ -274,7 +300,11 @@ async function syncAllSheets() {
       const vals = parseRowCells(r);
       if (idx === 0 && vals[1].toUpperCase().includes("KAD PENGENALAN")) return;
       const applicantName = (vals[0] || "").toUpperCase();
-      const rawIc = vals[1] || "";
+      let rawIc = vals[1] || "";
+      const normalizedName = applicantName.trim();
+      if ((!rawIc || rawIc.length < 5 || rawIc.includes("820825-06-556")) && nameToIcMap.has(normalizedName)) {
+        rawIc = nameToIcMap.get(normalizedName);
+      }
       const icNumber = formatIc(rawIc) || `820825-06-556${idx}`;
       const title = vals[18] || "";
       if (!applicantName && !title) return;
@@ -297,6 +327,16 @@ async function syncAllSheets() {
       const parsedDate = parseSheetDate(vals[32]);
       const recordYear = parsedDate ? parsedDate.getFullYear() : 2026;
       const recordCreatedAt = parsedDate ? parsedDate.toISOString() : (/* @__PURE__ */ new Date()).toISOString();
+      const m1Name = (vals[5] || "").toUpperCase().trim();
+      let m1Ic = (vals[6] || "").trim();
+      if ((!m1Ic || m1Ic.length < 5) && m1Name && nameToIcMap.has(m1Name)) {
+        m1Ic = nameToIcMap.get(m1Name);
+      }
+      const m2Name = (vals[10] || "").toUpperCase().trim();
+      let m2Ic = (vals[11] || "").trim();
+      if ((!m2Ic || m2Ic.length < 5) && m2Name && nameToIcMap.has(m2Name)) {
+        m2Ic = nameToIcMap.get(m2Name);
+      }
       const resRecord = {
         id: `sheet-lampA-${idx + 1}`,
         applicationId: appId,
@@ -320,8 +360,8 @@ async function syncAllSheets() {
           department: vals[3] || "Unit Penyelidikan & Inovasi",
           institution: vals[4] || "Kolej Komuniti Beaufort",
           members: [
-            vals[5] ? { id: `m-1`, name: (vals[5] || "").toUpperCase(), icNumber: formatIc(vals[6]), phone: vals[7] || "", department: vals[8] || "", institution: vals[9] || "Kolej Komuniti Beaufort" } : null,
-            vals[10] ? { id: `m-2`, name: (vals[10] || "").toUpperCase(), icNumber: formatIc(vals[11]), phone: vals[12] || "", department: vals[13] || "", institution: vals[14] || "Kolej Komuniti Beaufort" } : null
+            vals[5] ? { id: `m-1`, name: m1Name, icNumber: formatIc(m1Ic), phone: vals[7] || "", department: vals[8] || "", institution: vals[9] || "Kolej Komuniti Beaufort" } : null,
+            vals[10] ? { id: `m-2`, name: m2Name, icNumber: formatIc(m2Ic), phone: vals[12] || "", department: vals[13] || "", institution: vals[14] || "Kolej Komuniti Beaufort" } : null
           ].filter(Boolean),
           adminInfo: {
             kupikName: vals[15] || "NORFAZIRAH BINTI KUSIN",
@@ -415,7 +455,11 @@ async function syncAllSheets() {
       const vals = parseRowCells(r);
       if (idx === 0 && vals[1].toUpperCase().includes("KAD PENGENALAN")) return;
       const applicantName = (vals[0] || "").toUpperCase();
-      const rawIc = vals[1] || "";
+      let rawIc = vals[1] || "";
+      const normalizedName = applicantName.trim();
+      if ((!rawIc || rawIc.length < 5 || rawIc.includes("830101-12-123")) && nameToIcMap.has(normalizedName)) {
+        rawIc = nameToIcMap.get(normalizedName);
+      }
       const icNumber = formatIc(rawIc) || `830101-12-123${idx}`;
       const title = vals[10] || "";
       if (!applicantName && !title) return;
@@ -1661,23 +1705,48 @@ app.get("/api/stats", (req, res) => {
 app.get("/api/audit-logs", (req, res) => {
   res.json(db.auditLogs);
 });
-app.post("/api/feedback", (req, res) => {
-  const { name, email, feedback, suggestion, rating } = req.body;
-  if (!name || !email || !feedback) {
-    return res.status(400).json({ error: "Nama, emel dan maklum balas diperlukan." });
+app.post("/api/feedback", async (req, res) => {
+  const { name, email, role, s1, s2, s3, s4, s5, comments } = req.body;
+  if (!name || !email) {
+    return res.status(400).json({ error: "Nama penuh dan emel rasmi diperlukan." });
+  }
+  const formattedDate = formatDateForSheet(/* @__PURE__ */ new Date());
+  const rowValues = [
+    name.trim(),
+    email.trim(),
+    role || "Pemohon",
+    Number(s1) || 5,
+    Number(s2) || 5,
+    Number(s3) || 5,
+    Number(s4) || 5,
+    Number(s5) || 5,
+    comments?.trim() || "",
+    formattedDate
+  ];
+  try {
+    const authHeader = req.headers.authorization;
+    const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.substring(7) : void 0;
+    await appendRowToGoogleSheet("maklum balas", rowValues, bearerToken);
+    console.log(`[iREPRO Server] Successfully appended feedback to 'maklum balas' sheet tab.`);
+  } catch (err) {
+    console.warn("[iREPRO Server] Could not write feedback to Google Sheets:", err);
   }
   const item = {
     id: `fb-${Date.now()}`,
     name: name.trim(),
     email: email.trim(),
-    feedback: feedback.trim(),
-    suggestion: suggestion?.trim() || "",
-    rating: Number(rating) || 5,
+    role: role || "Pemohon",
+    s1: Number(s1) || 5,
+    s2: Number(s2) || 5,
+    s3: Number(s3) || 5,
+    s4: Number(s4) || 5,
+    s5: Number(s5) || 5,
+    comments: comments?.trim() || "",
     createdAt: (/* @__PURE__ */ new Date()).toISOString()
   };
   db.feedback.push(item);
   saveDb();
-  res.json({ success: true, message: "Maklum balas berjaya dihantar. Terima kasih!" });
+  res.json({ success: true, message: "Maklum balas penggunaan iREPRO berjaya direkodkan. Terima kasih!" });
 });
 app.get("/api/feedback", (req, res) => {
   res.json(db.feedback);

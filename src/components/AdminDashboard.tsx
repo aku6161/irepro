@@ -299,7 +299,7 @@ export const AdminDashboard: React.FC = () => {
               {statsByYear.map((s) => {
                 const heightPercent = s.inovasi > 0 ? Math.max(15, Math.round((s.inovasi / Math.max(...statsByYear.map(sy => sy.inovasi), 1)) * 80)) : 0;
                 return (
-                  <div key={s.year} className="flex flex-col items-center group w-1/4">
+                  <div key={s.year} className="h-full flex flex-col justify-end items-center group w-1/4">
                     {/* Count Label */}
                     <span className="text-[11px] font-extrabold text-slate-900 mb-1.5 transition-all font-mono">
                       {s.inovasi}
@@ -347,7 +347,7 @@ export const AdminDashboard: React.FC = () => {
               {statsByYear.map((s) => {
                 const heightPercent = s.penyelidikan > 0 ? Math.max(15, Math.round((s.penyelidikan / Math.max(...statsByYear.map(sy => sy.penyelidikan), 1)) * 80)) : 0;
                 return (
-                  <div key={s.year} className="flex flex-col items-center group w-1/4">
+                  <div key={s.year} className="h-full flex flex-col justify-end items-center group w-1/4">
                     {/* Count Label */}
                     <span className="text-[11px] font-extrabold text-slate-900 mb-1.5 transition-all font-mono">
                       {s.penyelidikan}
