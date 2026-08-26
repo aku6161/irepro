@@ -282,11 +282,8 @@ export const AdminDashboard: React.FC = () => {
             <div>
               <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
                 <Sparkles className="w-4 h-4 text-red-600" />
-                <span>Permohonan Inovasi Mengikut Tahun</span>
+                <span>Permohonan Inovasi</span>
               </h3>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                3 tahun terkini bagi permohonan projek inovasi.
-              </p>
             </div>
             <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-1 rounded-lg border border-red-100">
               Inovasi
@@ -330,11 +327,8 @@ export const AdminDashboard: React.FC = () => {
             <div>
               <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
                 <BookOpen className="w-4 h-4 text-emerald-600" />
-                <span>Permohonan Penyelidikan Mengikut Tahun</span>
+                <span>Permohonan Penyelidikan</span>
               </h3>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                3 tahun terkini bagi permohonan kertas penyelidikan.
-              </p>
             </div>
             <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">
               Penyelidikan
@@ -392,9 +386,6 @@ export const AdminDashboard: React.FC = () => {
                       <BarChart3 className="w-4 h-4 text-blue-600" />
                       <span>Maklum Balas Penggunaan iREPRO</span>
                     </h3>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Purata skor (1-5) bagi 5 kriteria penilaian ({fbStats.total} maklum balas).
-                    </p>
                   </div>
                   <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg border border-blue-100">
                     Sistem
