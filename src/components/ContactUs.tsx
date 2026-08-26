@@ -71,14 +71,38 @@ export const ContactUs: React.FC = () => {
             </div>
 
             <div className="flex items-start space-x-2.5">
-              <Mail className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+              <Phone className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
               <div>
-                <span className="font-semibold block text-slate-800">Emel:</span>
-                <a href="mailto:shamsuddin.amin@yahoo.com" className="text-red-600 hover:underline">
-                  shamsuddin.amin@yahoo.com
+                <span className="font-semibold block text-slate-800">Hubungi Kami:</span>
+                <a 
+                  href="https://wa.me/" 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="inline-flex items-center space-x-1 text-emerald-600 hover:text-emerald-500 font-bold"
+                >
+                  <span>Hubungi via WhatsApp</span>
+                  <ExternalLink className="w-3 h-3" />
                 </a>
               </div>
             </div>
+          </div>
+
+          <div className="space-y-2.5 pt-4 border-t border-slate-100">
+            <span className="font-bold block text-slate-950">Nama Pembangun:</span>
+            <ul className="space-y-1.5 text-slate-600 leading-normal font-medium pl-1">
+              <li className="flex items-center space-x-1.5">
+                <span className="w-1.5 h-1.5 bg-red-500 rounded-full shrink-0" />
+                <span>Shamsuddin bin Amin</span>
+              </li>
+              <li className="flex items-center space-x-1.5">
+                <span className="w-1.5 h-1.5 bg-red-500 rounded-full shrink-0" />
+                <span>Norfazirah binti Kusin</span>
+              </li>
+              <li className="flex items-center space-x-1.5">
+                <span className="w-1.5 h-1.5 bg-red-500 rounded-full shrink-0" />
+                <span>Reziella binti Lahaji</span>
+              </li>
+            </ul>
           </div>
         </div>
 

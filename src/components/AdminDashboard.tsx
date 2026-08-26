@@ -274,76 +274,102 @@ export const AdminDashboard: React.FC = () => {
         </button>
       </div>
 
-      {/* Perbandingan Rekod Mengikut Tahun (3 Tahun Terkini) */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
-          <div>
-            <h2 className="text-base font-bold text-slate-900 flex items-center space-x-2">
-              <BarChart3 className="w-5 h-5 text-red-600" />
-              <span>Analisis Perbandingan Rekod Mengikut Tahun</span>
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Pecahan jumlah permohonan Projek Inovasi dan Kertas Penyelidikan bagi 3 tahun terkini.
-            </p>
+      {/* Perbandingan Rekod Mengikut Jenis (2 Kad Asing dengan Carta Bar Menegak) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Kad 1: Inovasi */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-6">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                <Sparkles className="w-4 h-4 text-red-600" />
+                <span>Permohonan Inovasi Mengikut Tahun</span>
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                3 tahun terkini bagi permohonan projek inovasi.
+              </p>
+            </div>
+            <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-1 rounded-lg border border-red-100">
+              Inovasi
+            </span>
           </div>
-          <div className="inline-flex items-center space-x-1.5 text-xs text-red-600 font-bold bg-red-50 border border-red-100 px-3 py-1.5 rounded-xl">
-            <TrendingUp className="w-4 h-4" />
-            <span>Kemas Kini Automatik</span>
+
+          <div className="relative pt-2">
+            {/* Vertical Bar Chart Container */}
+            <div className="flex items-end justify-around h-44 px-4 bg-slate-50/50 rounded-xl pb-3 border border-slate-100">
+              {statsByYear.map((s) => {
+                const heightPercent = s.inovasi > 0 ? Math.max(15, Math.round((s.inovasi / Math.max(...statsByYear.map(sy => sy.inovasi), 1)) * 80)) : 0;
+                return (
+                  <div key={s.year} className="flex flex-col items-center group w-1/4">
+                    {/* Count Label */}
+                    <span className="text-[11px] font-extrabold text-slate-900 mb-1.5 transition-all font-mono">
+                      {s.inovasi}
+                    </span>
+                    {/* Vertical Bar */}
+                    <div 
+                      style={{ height: `${heightPercent}%` }} 
+                      className={`w-12 bg-red-600 rounded-t-md transition-all duration-300 hover:bg-red-500 relative flex items-end justify-center ${s.inovasi > 0 ? 'shadow-md shadow-red-500/10' : 'opacity-20'}`}
+                    >
+                      <div className="absolute -top-9 scale-0 group-hover:scale-100 bg-slate-955 text-white text-[9px] px-2 py-1 rounded transition-all z-10 whitespace-nowrap font-mono shadow-md">
+                        {s.inovasi} Rekod
+                      </div>
+                    </div>
+                    {/* Year Label */}
+                    <span className="text-[11px] font-bold text-slate-600 mt-2.5 font-mono">
+                      {s.year}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {statsByYear.map((yrStats) => {
-            const inovasiPct = yrStats.total > 0 ? Math.round((yrStats.inovasi / yrStats.total) * 100) : 0;
-            const penyelidikanPct = yrStats.total > 0 ? Math.round((yrStats.penyelidikan / yrStats.total) * 100) : 0;
+        {/* Kad 2: Penyelidikan */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-6">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                <BookOpen className="w-4 h-4 text-emerald-600" />
+                <span>Permohonan Penyelidikan Mengikut Tahun</span>
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                3 tahun terkini bagi permohonan kertas penyelidikan.
+              </p>
+            </div>
+            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">
+              Penyelidikan
+            </span>
+          </div>
 
-            return (
-              <div key={yrStats.year} className="bg-slate-50/50 rounded-xl border border-slate-100 p-5 space-y-4 hover:shadow-xs transition-shadow">
-                {/* Year Header & Total */}
-                <div className="flex items-end justify-between">
-                  <span className="text-2xl font-black text-slate-800 tracking-tight font-mono">{yrStats.year}</span>
-                  <div className="text-right">
-                    <span className="text-xs font-semibold text-slate-500 uppercase block tracking-wider">Jumlah Rekod</span>
-                    <span className="text-lg font-extrabold text-slate-950">{yrStats.total} permohonan</span>
-                  </div>
-                </div>
-
-                {/* Progress bar split visualizer */}
-                <div className="space-y-1.5">
-                  <div className="h-3 w-full bg-slate-200 rounded-full flex overflow-hidden">
-                    {yrStats.total > 0 ? (
-                      <>
-                        <div style={{ width: `${inovasiPct}%` }} className="bg-red-600 h-full transition-all" title={`Inovasi: ${inovasiPct}%`} />
-                        <div style={{ width: `${penyelidikanPct}%` }} className="bg-emerald-600 h-full transition-all" title={`Penyelidikan: ${penyelidikanPct}%`} />
-                      </>
-                    ) : (
-                      <div className="w-full bg-slate-200 h-full" />
-                    )}
-                  </div>
-                  {yrStats.total > 0 ? (
-                    <div className="flex items-center justify-between text-[10px] text-slate-500">
-                      <span>Inovasi ({inovasiPct}%)</span>
-                      <span>Penyelidikan ({penyelidikanPct}%)</span>
+          <div className="relative pt-2">
+            {/* Vertical Bar Chart Container */}
+            <div className="flex items-end justify-around h-44 px-4 bg-slate-50/50 rounded-xl pb-3 border border-slate-100">
+              {statsByYear.map((s) => {
+                const heightPercent = s.penyelidikan > 0 ? Math.max(15, Math.round((s.penyelidikan / Math.max(...statsByYear.map(sy => sy.penyelidikan), 1)) * 80)) : 0;
+                return (
+                  <div key={s.year} className="flex flex-col items-center group w-1/4">
+                    {/* Count Label */}
+                    <span className="text-[11px] font-extrabold text-slate-900 mb-1.5 transition-all font-mono">
+                      {s.penyelidikan}
+                    </span>
+                    {/* Vertical Bar */}
+                    <div 
+                      style={{ height: `${heightPercent}%` }} 
+                      className={`w-12 bg-emerald-600 rounded-t-md transition-all duration-300 hover:bg-emerald-500 relative flex items-end justify-center ${s.penyelidikan > 0 ? 'shadow-md shadow-emerald-500/10' : 'opacity-20'}`}
+                    >
+                      <div className="absolute -top-9 scale-0 group-hover:scale-100 bg-slate-955 text-white text-[9px] px-2 py-1 rounded transition-all z-10 whitespace-nowrap font-mono shadow-md">
+                        {s.penyelidikan} Rekod
+                      </div>
                     </div>
-                  ) : (
-                    <div className="text-[10px] text-slate-400 italic">Tiada data direkodkan</div>
-                  )}
-                </div>
-
-                {/* Legend details */}
-                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100/80">
-                  <div className="bg-white rounded-lg p-2.5 border border-slate-100 text-center">
-                    <span className="block text-[10px] font-bold text-red-600 uppercase tracking-wider">Inovasi</span>
-                    <span className="text-base font-extrabold text-slate-900">{yrStats.inovasi}</span>
+                    {/* Year Label */}
+                    <span className="text-[11px] font-bold text-slate-600 mt-2.5 font-mono">
+                      {s.year}
+                    </span>
                   </div>
-                  <div className="bg-white rounded-lg p-2.5 border border-slate-100 text-center">
-                    <span className="block text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Penyelidikan</span>
-                    <span className="text-base font-extrabold text-slate-900">{yrStats.penyelidikan}</span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
 

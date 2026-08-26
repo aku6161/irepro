@@ -360,7 +360,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenUserLogin, onOpe
               Hubungi Kami
             </button>
             <span>•</span>
-            <span className="text-slate-400">Pembangun: Shamsuddin Amin</span>
+            <span className="text-slate-400">Pembangun: Shamsuddin bin Amin, Norfazirah binti Kusin, Reziella binti Lahaji</span>
           </div>
         </div>
       </footer>
