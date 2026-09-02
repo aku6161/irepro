@@ -1447,6 +1447,28 @@ app.put("/api/auth/update-profile", async (req, res) => {
   );
   return res.json({ success: true, user: existing });
 });
+app.get("/api/users", async (req, res) => {
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  try {
+    await refreshFromSupabase();
+  } catch (e) {
+  }
+  res.json({ users: db.users });
+});
+app.delete("/api/users/:id", async (req, res) => {
+  const { id } = req.params;
+  const user = db.users.find((u) => u.id === id || u.icNumber === id);
+  if (!user) {
+    return res.status(404).json({ error: "Pengguna tidak ditemui." });
+  }
+  db.users = db.users.filter((u) => u.id !== id && u.icNumber !== id);
+  const { error } = await supabase.from("users").delete().or(`id.eq.${id},icNumber.eq.${user.icNumber}`);
+  if (error) {
+    console.error("[Supabase] Error deleting user:", error);
+  }
+  addAuditLog("ADMIN", "Admin action", void 0, `Padam pengguna: ${user.name} (${user.icNumber})`);
+  res.json({ success: true, message: "Pengguna berjaya dipadam." });
+});
 app.get("/api/applications", async (req, res) => {
   res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   res.set("Pragma", "no-cache");

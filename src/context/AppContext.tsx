@@ -33,6 +33,8 @@ interface AppContextType {
   createApplication: (data: any) => Promise<ApplicationRecord>;
   updateApplication: (id: string, data: any) => Promise<ApplicationRecord>;
   deleteApplication: (id: string) => Promise<void>;
+  users: UserProfile[];
+  deleteUser: (id: string) => Promise<void>;
   previewDoc: GeneratedDocument | null;
   setPreviewDoc: (doc: GeneratedDocument | null) => void;
   editingApplication: ApplicationRecord | null;
@@ -73,6 +75,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const [activeView, setActiveView] = useState<string>('landing');
   const [applications, setApplications] = useState<ApplicationRecord[]>([]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
   const [stats, setStats] = useState<StatsOverview | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -83,6 +86,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const isAdmin = userRole === 'ADMIN';
   const isGoogleConnected = Boolean(googleToken);
+
+  const deleteUser = async (id: string) => {
+    try {
+      setIsLoading(true);
+      const res = await fetch(`/api/users/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Gagal memadam pengguna.');
+      }
+      setUsers((prev) => prev.filter((u) => u.id !== id && u.icNumber !== id));
+      showToast('Pengguna berjaya dipadam!', 'success');
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`;
@@ -180,12 +200,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setApplications(normalized);
       }
 
-      // Fetch Audit Logs if admin
+      // Fetch Audit Logs & Users if admin
       if (userRole === 'ADMIN') {
-        const logsRes = await fetch('/api/audit-logs');
+        const [logsRes, usersRes] = await Promise.all([
+          fetch('/api/audit-logs'),
+          fetch('/api/users')
+        ]);
         if (logsRes.ok) {
           const logsData = await logsRes.json();
           setAuditLogs(logsData);
+        }
+        if (usersRes.ok) {
+          const usersData = await usersRes.json();
+          setUsers(usersData.users || []);
         }
       }
     } catch (err) {
@@ -348,6 +375,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         createApplication,
         updateApplication,
         deleteApplication,
+        users,
+        deleteUser,
         previewDoc,
         setPreviewDoc,
         editingApplication,
