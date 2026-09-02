@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
+import PDFDocument from 'pdfkit';
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import ws from 'ws';
@@ -1926,6 +1927,127 @@ app.post('/api/documents/generate-docx', async (req, res) => {
   }
 });
 
+function generatePdfCertificateBuffer(appRecord: any): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({
+        layout: 'landscape',
+        size: 'A4',
+        margin: 40
+      });
+
+      const chunks: Buffer[] = [];
+      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', (err: any) => reject(err));
+
+      const chiefName = (appRecord.applicantName || appRecord.innovationData?.chiefName || '').toUpperCase();
+      const title = (appRecord.title || appRecord.innovationData?.title || '').toUpperCase();
+      const institution = appRecord.institution || 'Kolej Komuniti Beaufort';
+      const category = appRecord.innovationData?.category || (appRecord.category || 'Inovasi');
+      const members = appRecord.members || appRecord.innovationData?.members || [];
+      const memberNames = members.map((m: any) => m.name).filter(Boolean).join(', ');
+      
+      const adminInfo = appRecord.adminOfficers || appRecord.innovationData?.adminInfo || {
+        directorName: 'Ts. JULKIFLI BIN AWANG BESAR (A.D.K)'
+      };
+
+      const dateStr = new Date().toLocaleDateString('ms-MY', { day: 'numeric', month: 'long', year: 'numeric' });
+
+      // Outer Golden & Slate Frame
+      doc.rect(20, 20, doc.page.width - 40, doc.page.height - 40)
+         .lineWidth(3)
+         .strokeColor('#D4AF37')
+         .stroke();
+
+      doc.rect(26, 26, doc.page.width - 52, doc.page.height - 52)
+         .lineWidth(1)
+         .strokeColor('#1e293b')
+         .stroke();
+
+      // Top Institution Header
+      doc.fillColor('#0f172a')
+         .font('Helvetica-Bold')
+         .fontSize(12)
+         .text('KOLEJ KOMUNITI BEAUFORT', 0, 50, { align: 'center' });
+
+      doc.fillColor('#64748b')
+         .font('Helvetica')
+         .fontSize(10)
+         .text('KEMENTERIAN PENDIDIKAN TINGGI MALAYSIA', 0, 66, { align: 'center' });
+
+      // Certificate Title
+      doc.fillColor('#991b1b')
+         .font('Helvetica-Bold')
+         .fontSize(26)
+         .text('SIJIL INOVASI & PENGHARGAAN', 0, 100, { align: 'center' });
+
+      doc.fillColor('#475569')
+         .font('Helvetica')
+         .fontSize(11)
+         .text('Dengan ini diperakukan bahawa', 0, 145, { align: 'center' });
+
+      // Name
+      doc.fillColor('#0f172a')
+         .font('Helvetica-Bold')
+         .fontSize(22)
+         .text(chiefName || 'PEMOHON INOVASI', 0, 170, { align: 'center' });
+
+      if (memberNames) {
+        doc.fillColor('#334155')
+           .font('Helvetica-Oblique')
+           .fontSize(11)
+           .text(`Ahli Kumpulan: ${memberNames}`, 0, 200, { align: 'center' });
+      }
+
+      const textY = memberNames ? 225 : 210;
+      doc.fillColor('#475569')
+         .font('Helvetica')
+         .fontSize(11)
+         .text('telah berjaya mendaftar dan membangunkan produk inovasi bertajuk:', 0, textY, { align: 'center' });
+
+      // Product Title
+      doc.fillColor('#b91c1c')
+         .font('Helvetica-Bold')
+         .fontSize(17)
+         .text(`“${title || 'PRODUK INOVASI'}”`, 60, textY + 25, { align: 'center', width: doc.page.width - 120 });
+
+      // Meta Details (Category & Institution)
+      const metaY = textY + 80;
+      doc.fillColor('#334155')
+         .font('Helvetica-Bold')
+         .fontSize(12)
+         .text(`KATEGORI: ${category.toUpperCase()}  |  INSTITUSI: ${institution.toUpperCase()}`, 0, metaY, { align: 'center' });
+
+      doc.fillColor('#64748b')
+         .font('Helvetica')
+         .fontSize(10)
+         .text('Sistem Pengurusan Dokumen & Repositori Inovasi (iREPRO)', 0, metaY + 20, { align: 'center' });
+
+      // Footer: Date & Signature
+      const footerY = doc.page.height - 110;
+      doc.fillColor('#475569')
+         .font('Helvetica')
+         .fontSize(10)
+         .text(`Tarikh: ${dateStr}`, 60, footerY, { align: 'left' });
+
+      doc.fillColor('#0f172a')
+         .font('Helvetica-Bold')
+         .fontSize(11)
+         .text(adminInfo.directorName || 'Ts. JULKIFLI BIN AWANG BESAR (A.D.K)', doc.page.width - 340, footerY, { align: 'right', width: 280 });
+
+      doc.fillColor('#64748b')
+         .font('Helvetica')
+         .fontSize(9)
+         .text('Pengarah, Kolej Komuniti Beaufort', doc.page.width - 340, footerY + 16, { align: 'right', width: 280 });
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
 app.post('/api/documents/generate-pdf', async (req, res) => {
   try {
     const { templateKey, applicationId } = req.body;
@@ -1985,29 +2107,16 @@ app.post('/api/documents/generate-pdf', async (req, res) => {
           console.warn(`[PDF Generator] Apps Script response:`, scriptData);
         }
       } catch (err: any) {
-        console.warn(`[PDF Generator] Apps Script PDF generation failed, falling back:`, err.message);
+        console.warn(`[PDF Generator] Apps Script PDF generation failed, falling back to local PDF renderer:`, err.message);
       }
     }
 
-    // 2. Direct Export Fallback: Export Google Presentation / Google Document directly as PDF
-    console.log(`[PDF Generator] Downloading direct PDF export for ${templateKey} (${templateId})...`);
-    let pdfUrl = `https://docs.google.com/presentation/d/${templateId}/export/pdf`;
-    let pdfRes = await fetch(pdfUrl);
-    
-    if (!pdfRes.ok) {
-      pdfUrl = `https://docs.google.com/document/d/${templateId}/export?format=pdf`;
-      pdfRes = await fetch(pdfUrl);
-    }
-
-    if (!pdfRes.ok) {
-      return res.status(500).json({ error: `Gagal memuat turun PDF daripada Google (HTTP ${pdfRes.status}).` });
-    }
-
-    const arrayBuffer = await pdfRes.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
+    // 2. Guaranteed Fallback Method: Render native vector PDF Certificate with all real data filled
+    console.log(`[PDF Generator] Rendering native PDF certificate with replaced placeholders for ${applicationId}...`);
+    const buffer = await generatePdfCertificateBuffer(appRecord);
     const docName = `${applicationId}_${templateKey}.pdf`;
-    console.log(`[PDF Generator] PDF Document ${docName} successfully generated (${buffer.length} bytes)!`);
+
+    console.log(`[PDF Generator] Native PDF Certificate ${docName} successfully generated (${buffer.length} bytes)!`);
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${docName}"`);
