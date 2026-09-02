@@ -258,11 +258,13 @@ export const AdminDashboard: React.FC = () => {
     // 1 -> SHAMSUDDIN BIN AMIN (usr-0001)
     // 2 -> REZIELLA BINTI LAHAJI (usr-0002)
     // 3 -> NORFAZIRAH BINTI KUSIN (usr-0003)
+    // 4 -> AHMAD KHUDRI BIN SHAMSUDDIN (usr-0004)
     const getPriority = (name: string): number => {
-      const n = (name || '').toUpperCase();
-      if (n.includes('SHAMSUDDIN')) return 1;
-      if (n.includes('REZIELLA')) return 2;
-      if (n.includes('NORFAZIRAH')) return 3;
+      const n = (name || '').toUpperCase().trim();
+      if (n.startsWith('SHAMSUDDIN BIN AMIN') || n === 'SHAMSUDDIN BIN AMIN') return 1;
+      if (n.startsWith('REZIELLA') || n.includes('REZIELLA BINTI LAHAJI')) return 2;
+      if (n.startsWith('NORFAZIRAH') || n.includes('NORFAZIRAH BINTI KUSIN')) return 3;
+      if (n.startsWith('AHMAD KHUDRI') || n.includes('AHMAD KHUDRI BIN SHAMSUDDIN')) return 4;
       return 999;
     };
 
@@ -276,10 +278,14 @@ export const AdminDashboard: React.FC = () => {
     return rawList.map((u, idx) => {
       const numStr = String(idx + 1).padStart(4, '0');
       let formattedId = `usr-${numStr}`;
-      const n = (u.name || '').toUpperCase();
-      if (n.includes('SHAMSUDDIN')) formattedId = 'usr-0001';
-      else if (n.includes('REZIELLA')) formattedId = 'usr-0002';
-      else if (n.includes('NORFAZIRAH')) formattedId = 'usr-0003';
+      const n = (u.name || '').toUpperCase().trim();
+      if (n.startsWith('SHAMSUDDIN BIN AMIN') || n === 'SHAMSUDDIN BIN AMIN') formattedId = 'usr-0001';
+      else if (n.startsWith('REZIELLA') || n.includes('REZIELLA BINTI LAHAJI')) formattedId = 'usr-0002';
+      else if (n.startsWith('NORFAZIRAH') || n.includes('NORFAZIRAH BINTI KUSIN')) formattedId = 'usr-0003';
+      else if (n.startsWith('AHMAD KHUDRI') || n.includes('AHMAD KHUDRI BIN SHAMSUDDIN')) formattedId = 'usr-0004';
+      else {
+        formattedId = `usr-${String(idx + 1).padStart(4, '0')}`;
+      }
 
       return {
         ...u,
