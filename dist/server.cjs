@@ -2471,17 +2471,26 @@ app.post("/api/documents/generate-pdf", async (req, res) => {
           })
         });
         const scriptData = await scriptRes.json().catch(() => ({}));
-        if (scriptData.success && (scriptData.pdfUrl || scriptData.docxUrl)) {
-          const targetPdfUrl = scriptData.pdfUrl || scriptData.docxUrl;
-          console.log(`[PDF Generator] Apps Script generated PDF at: ${targetPdfUrl}`);
-          const pdfFetchRes = await fetch(targetPdfUrl);
-          if (pdfFetchRes.ok) {
-            const arrayBuffer = await pdfFetchRes.arrayBuffer();
-            const buffer2 = Buffer.from(arrayBuffer);
-            const docName2 = `${applicationId}_${templateKey}.pdf`;
+        if (scriptData.success) {
+          const docName2 = `${applicationId}_${templateKey}.pdf`;
+          if (scriptData.pdfBase64) {
+            console.log(`[PDF Generator] Apps Script returned base64 PDF (${scriptData.pdfBase64.length} chars) for ${applicationId}`);
+            const buffer2 = Buffer.from(scriptData.pdfBase64, "base64");
             res.setHeader("Content-Type", "application/pdf");
             res.setHeader("Content-Disposition", `attachment; filename="${docName2}"`);
             return res.send(buffer2);
+          }
+          const targetPdfUrl = scriptData.pdfUrl || scriptData.docxUrl;
+          if (targetPdfUrl) {
+            console.log(`[PDF Generator] Apps Script returned PDF URL: ${targetPdfUrl}`);
+            const pdfFetchRes = await fetch(targetPdfUrl);
+            if (pdfFetchRes.ok) {
+              const arrayBuffer = await pdfFetchRes.arrayBuffer();
+              const buffer2 = Buffer.from(arrayBuffer);
+              res.setHeader("Content-Type", "application/pdf");
+              res.setHeader("Content-Disposition", `attachment; filename="${docName2}"`);
+              return res.send(buffer2);
+            }
           }
         } else {
           console.warn(`[PDF Generator] Apps Script response:`, scriptData);

@@ -2090,18 +2090,30 @@ app.post('/api/documents/generate-pdf', async (req, res) => {
         });
 
         const scriptData = await scriptRes.json().catch(() => ({}));
-        if (scriptData.success && (scriptData.pdfUrl || scriptData.docxUrl)) {
-          const targetPdfUrl = scriptData.pdfUrl || scriptData.docxUrl;
-          console.log(`[PDF Generator] Apps Script generated PDF at: ${targetPdfUrl}`);
-          const pdfFetchRes = await fetch(targetPdfUrl);
-          if (pdfFetchRes.ok) {
-            const arrayBuffer = await pdfFetchRes.arrayBuffer();
-            const buffer = Buffer.from(arrayBuffer);
-            const docName = `${applicationId}_${templateKey}.pdf`;
+        if (scriptData.success) {
+          const docName = `${applicationId}_${templateKey}.pdf`;
 
+          // Method 1: Apps Script returned base64 PDF directly (best - placeholders already replaced)
+          if (scriptData.pdfBase64) {
+            console.log(`[PDF Generator] Apps Script returned base64 PDF (${scriptData.pdfBase64.length} chars) for ${applicationId}`);
+            const buffer = Buffer.from(scriptData.pdfBase64, 'base64');
             res.setHeader('Content-Type', 'application/pdf');
             res.setHeader('Content-Disposition', `attachment; filename="${docName}"`);
             return res.send(buffer);
+          }
+
+          // Method 2: Apps Script returned a PDF URL to fetch
+          const targetPdfUrl = scriptData.pdfUrl || scriptData.docxUrl;
+          if (targetPdfUrl) {
+            console.log(`[PDF Generator] Apps Script returned PDF URL: ${targetPdfUrl}`);
+            const pdfFetchRes = await fetch(targetPdfUrl);
+            if (pdfFetchRes.ok) {
+              const arrayBuffer = await pdfFetchRes.arrayBuffer();
+              const buffer = Buffer.from(arrayBuffer);
+              res.setHeader('Content-Type', 'application/pdf');
+              res.setHeader('Content-Disposition', `attachment; filename="${docName}"`);
+              return res.send(buffer);
+            }
           }
         } else {
           console.warn(`[PDF Generator] Apps Script response:`, scriptData);

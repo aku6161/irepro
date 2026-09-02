@@ -299,10 +299,11 @@ function doPost(e) {
       }
     }
 
-    // ── ACTION: Jana dokumen dari template Google Docs ──
+
+    // ── ACTION: Jana dokumen dari template Google Docs / Google Slides ──
     var templateId = payload.templateId;
-    var fileName = payload.fileName;
-    var replacements = payload.replacements;
+    var fileName = payload.fileName || ("iREPRO_doc_" + new Date().getTime());
+    var replacements = payload.replacements || {};
 
     if (!templateId) {
       return createJsonResponse({ success: false, error: "templateId diperlukan." });
@@ -310,21 +311,34 @@ function doPost(e) {
 
     // 1. Salin fail template dalam Google Drive
     var templateFile = DriveApp.getFileById(templateId);
+    var mimeType = templateFile.getMimeType();
     var newFile = templateFile.makeCopy(fileName);
     var newDocId = newFile.getId();
 
-    // 2. Buka salinan dan gantikan placeholder
-    try {
+    // Beri akses awam agar boleh dibaca
+    newFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+    // 2. Gantikan placeholder berdasarkan jenis fail
+    var isSlides = (mimeType === MimeType.GOOGLE_SLIDES);
+
+    if (isSlides) {
+      // ── Google Slides (Presentation) ──
+      var presentation = SlidesApp.openById(newDocId);
+      for (var key in replacements) {
+        if (replacements.hasOwnProperty(key)) {
+          presentation.replaceAllText(key, String(replacements[key] || ""));
+        }
+      }
+      presentation.saveAndClose();
+    } else {
+      // ── Google Docs (Document) ──
       var doc = DocumentApp.openById(newDocId);
       var body = doc.getBody();
-
       for (var key in replacements) {
         if (replacements.hasOwnProperty(key)) {
           body.replaceText(escapeRegex(key), replacements[key] || "");
         }
       }
-
-      // Gantikan dalam header jika ada
       var header = doc.getHeader();
       if (header) {
         for (var key in replacements) {
@@ -333,8 +347,6 @@ function doPost(e) {
           }
         }
       }
-
-      // Gantikan dalam footer jika ada
       var footer = doc.getFooter();
       if (footer) {
         for (var key in replacements) {
@@ -343,53 +355,50 @@ function doPost(e) {
           }
         }
       }
-
       doc.saveAndClose();
-      newFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    }
 
-      var docxUrl = "https://docs.google.com/document/d/" + newDocId + "/export?format=docx";
-      var pdfUrl = "https://docs.google.com/document/d/" + newDocId + "/export?format=pdf";
+    // 3. Export sebagai PDF menggunakan Drive API v2 + OAuth token (tanpa perlu URL awam)
+    var token = ScriptApp.getOAuthToken();
+    var exportMime = "application/pdf";
+    var exportUrl = isSlides
+      ? "https://www.googleapis.com/drive/v2/files/" + newDocId + "/export?mimeType=" + encodeURIComponent(exportMime)
+      : "https://www.googleapis.com/drive/v2/files/" + newDocId + "/export?mimeType=" + encodeURIComponent(exportMime);
 
-      return createJsonResponse({
-        success: true,
-        documentId: newDocId,
-        driveUrl: newFile.getUrl(),
-        pdfUrl: pdfUrl,
-        docxUrl: docxUrl
-      });
-    } catch (docErr) {
-      // Presentation / Google Slides fallback
-      var presentation = SlidesApp.openById(newDocId);
-      for (var key in replacements) {
-        if (replacements.hasOwnProperty(key)) {
-          presentation.replaceAllText(key, replacements[key] || "");
-        }
-      }
-      presentation.saveAndClose();
-      newFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    var pdfResponse = UrlFetchApp.fetch(exportUrl, {
+      headers: { "Authorization": "Bearer " + token },
+      muteHttpExceptions: true
+    });
 
-      var pdfUrl = "https://docs.google.com/presentation/d/" + newDocId + "/export/pdf";
+    if (pdfResponse.getResponseCode() !== 200) {
+      // Fallback: return export URL untuk server fetch semula
+      var fallbackPdfUrl = isSlides
+        ? "https://docs.google.com/presentation/d/" + newDocId + "/export/pdf"
+        : "https://docs.google.com/document/d/" + newDocId + "/export?format=pdf";
 
       return createJsonResponse({
         success: true,
         documentId: newDocId,
         driveUrl: newFile.getUrl(),
-        pdfUrl: pdfUrl,
-        docxUrl: pdfUrl
+        pdfUrl: fallbackPdfUrl,
+        docxUrl: fallbackPdfUrl,
+        method: "fallback-url"
       });
     }
 
-    // 3. Beri akses kepada sesiapa yang ada pautan
-    newFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    // 4. Encode PDF sebagai base64 dan hantar terus sebagai response
+    var pdfBytes = pdfResponse.getContent();
+    var base64Pdf = Utilities.base64Encode(pdfBytes);
 
-    // Pautan muat turun terus sebagai .docx
-    var docxUrl = "https://docs.google.com/document/d/" + newDocId + "/export?format=docx";
+    // Buang salinan dari Drive selepas export (opsional - kurangkan sampah Drive)
+    // newFile.setTrashed(true);
 
     return createJsonResponse({
       success: true,
       documentId: newDocId,
       driveUrl: newFile.getUrl(),
-      docxUrl: docxUrl
+      pdfBase64: base64Pdf,
+      method: "base64-pdf"
     });
 
   } catch (err) {
@@ -399,6 +408,7 @@ function doPost(e) {
     });
   }
 }
+
 
 function createJsonResponse(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
