@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useApp, formatUserProfileId } from '../context/AppContext';
 import { User, IdCard, Phone, Building2, Save, AlertCircle, Loader2, KeyRound } from 'lucide-react';
 
 export const UserProfileView: React.FC = () => {
@@ -134,7 +134,7 @@ export const UserProfileView: React.FC = () => {
               </label>
               <div className="flex items-center space-x-2 text-slate-700 font-mono text-xs select-all bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-inner">
                 <KeyRound className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <span>{currentUser.id}</span>
+                <span>{formatUserProfileId(currentUser).id}</span>
               </div>
             </div>
 

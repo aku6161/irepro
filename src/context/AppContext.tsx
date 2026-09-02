@@ -58,10 +58,34 @@ const GOOGLE_CLIENT_ID = '343211370533-q75qrjgahflu3t789p70fj27abdvtv6f.apps.goo
 const GOOGLE_SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1PEMSNeV9dnY4LZZpbE_CpcIJqccJ3SjPnCZ9fAN5uBY/edit?usp=sharing';
 const GOOGLE_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/folders/1egXO2QrPNoRnngA9fgfIe39-hiykscjK?usp=sharing';
 
+export const formatUserProfileId = (user: UserProfile): UserProfile => {
+  if (!user) return user;
+  const n = (user.name || '').toUpperCase().trim();
+  let id = user.id;
+
+  if (n.startsWith('SHAMSUDDIN BIN AMIN') || n === 'SHAMSUDDIN BIN AMIN' || n.includes('SHAMSUDDIN BIN AMIN')) {
+    id = 'usr-0001';
+  } else if (n.startsWith('REZIELLA') || n.includes('REZIELLA BINTI LAHAJI')) {
+    id = 'usr-0002';
+  } else if (n.startsWith('NORFAZIRAH') || n.includes('NORFAZIRAH BINTI KUSIN')) {
+    id = 'usr-0003';
+  } else if (n.startsWith('AHMAD KHUDRI') || n.includes('AHMAD KHUDRI BIN SHAMSUDDIN')) {
+    id = 'usr-0004';
+  } else if (!id || !/^usr-\d{4}$/.test(id)) {
+    const digits = (user.icNumber || '').replace(/\D/g, '');
+    id = digits ? `usr-${digits.slice(-4).padStart(4, '0')}` : 'usr-0005';
+  }
+
+  return {
+    ...user,
+    id
+  };
+};
+
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
     const saved = localStorage.getItem('irepro_user');
-    return saved ? JSON.parse(saved) : null;
+    return saved ? formatUserProfileId(JSON.parse(saved)) : null;
   });
 
   const [userRole, setUserRole] = useState<UserRole | null>(() => {
@@ -140,12 +164,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const loginUser = (user: UserProfile) => {
-    setCurrentUser(user);
+    const formattedUser = formatUserProfileId(user);
+    setCurrentUser(formattedUser);
     setUserRole('USER');
-    localStorage.setItem('irepro_user', JSON.stringify(user));
+    localStorage.setItem('irepro_user', JSON.stringify(formattedUser));
     localStorage.setItem('irepro_role', 'USER');
     setActiveView('user_dashboard');
-    showToast(`Selamat kembali, ${user.name}!`);
+    showToast(`Selamat kembali, ${formattedUser.name}!`);
   };
 
   const loginAdmin = () => {
@@ -158,8 +183,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const updateCurrentUserProfile = (user: UserProfile) => {
-    setCurrentUser(user);
-    localStorage.setItem('irepro_user', JSON.stringify(user));
+    const formattedUser = formatUserProfileId(user);
+    setCurrentUser(formattedUser);
+    localStorage.setItem('irepro_user', JSON.stringify(formattedUser));
   };
 
   const logout = () => {
