@@ -224,24 +224,68 @@ export const AdminDashboard: React.FC = () => {
   const kkbsPercent = totalUsers > 0 ? Math.round((kkbsCount / totalUsers) * 100) : 0;
   const luarPercent = totalUsers > 0 ? 100 - kkbsPercent : 0;
 
-  // User list computation (uses users from DB or fallback derived from applications)
+  // User list computation (uses users from DB + applicants from applications with strict usr-0001, usr-0002, usr-0003 ordering)
   const userList = (() => {
-    if (users && users.length > 0) return users;
     const map = new Map<string, any>();
-    applications.forEach((app, idx) => {
-      if (app.icNumber && !map.has(app.icNumber)) {
-        map.set(app.icNumber, {
-          id: `USR-${1000 + idx + 1}`,
+    
+    // Add users from DB
+    (users || []).forEach((u) => {
+      const key = (u.icNumber || u.name || u.id).toUpperCase().trim();
+      if (key) map.set(key, { ...u });
+    });
+
+    // Add applicants from applications if not in DB
+    applications.forEach((app) => {
+      const name = (app.applicantName || '').trim().toUpperCase();
+      const ic = (app.icNumber || '').trim();
+      const key = ic || name;
+      if (key && !map.has(key)) {
+        map.set(key, {
+          id: '',
           name: app.applicantName,
-          icNumber: app.icNumber,
+          icNumber: app.icNumber || '',
           email: app.email || app.innovationData?.chiefEmail || app.researchData?.chiefEmail || '-',
-          institution: app.institution,
+          institution: app.institution || 'KOLEJ KOMUNITI BEAUFORT',
           phone: app.phone || app.innovationData?.chiefPhone || app.researchData?.chiefPhone || '-',
           createdAt: app.createdAt
         });
       }
     });
-    return Array.from(map.values());
+
+    const rawList = Array.from(map.values());
+
+    // Priority mapping helper:
+    // 1 -> SHAMSUDDIN BIN AMIN (usr-0001)
+    // 2 -> REZIELLA BINTI LAHAJI (usr-0002)
+    // 3 -> NORFAZIRAH BINTI KUSIN (usr-0003)
+    const getPriority = (name: string): number => {
+      const n = (name || '').toUpperCase();
+      if (n.includes('SHAMSUDDIN')) return 1;
+      if (n.includes('REZIELLA')) return 2;
+      if (n.includes('NORFAZIRAH')) return 3;
+      return 999;
+    };
+
+    rawList.sort((a, b) => {
+      const pA = getPriority(a.name);
+      const pB = getPriority(b.name);
+      if (pA !== pB) return pA - pB;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+
+    return rawList.map((u, idx) => {
+      const numStr = String(idx + 1).padStart(4, '0');
+      let formattedId = `usr-${numStr}`;
+      const n = (u.name || '').toUpperCase();
+      if (n.includes('SHAMSUDDIN')) formattedId = 'usr-0001';
+      else if (n.includes('REZIELLA')) formattedId = 'usr-0002';
+      else if (n.includes('NORFAZIRAH')) formattedId = 'usr-0003';
+
+      return {
+        ...u,
+        id: formattedId
+      };
+    });
   })();
 
   const filteredUserList = userList.filter((u) => {

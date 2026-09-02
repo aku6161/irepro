@@ -835,34 +835,34 @@ if (!process.env.VERCEL && !import_fs.default.existsSync(DATA_DIR)) {
 }
 var initialUsers = [
   {
-    id: "usr-1",
-    icNumber: "880512-10-5431",
-    name: "Dr. Ahmad Fauzi bin Ismail",
-    phone: "012-3456789",
-    email: "fauzi.ismail@psa.edu.my",
-    institution: "Politeknik Sultan Salahuddin Abdul Aziz Shah",
-    department: "Jabatan Kejuruteraan Mekanikal",
-    createdAt: "2025-01-15T08:30:00.000Z"
+    id: "usr-0001",
+    icNumber: "850101-12-5555",
+    name: "SHAMSUDDIN BIN AMIN",
+    phone: "019-8765432",
+    email: "shamsuddin@kkbf.edu.my",
+    institution: "Kolej Komuniti Beaufort",
+    department: "Unit Penyelidikan & Inovasi",
+    createdAt: "2025-01-01T08:30:00.000Z"
   },
   {
-    id: "usr-2",
-    icNumber: "910304-08-5678",
-    name: "Ts. Siti Nurhaliza binti Ramli",
-    phone: "013-9876543",
-    email: "siti.nurhaliza@puo.edu.my",
-    institution: "Politeknik Ungku Omar",
-    department: "Jabatan Teknologi Maklumat & Komunikasi",
-    createdAt: "2025-02-10T10:00:00.000Z"
+    id: "usr-0002",
+    icNumber: "900202-12-6666",
+    name: "REZIELLA BINTI LAHAJI",
+    phone: "018-7654321",
+    email: "reziella@kkbf.edu.my",
+    institution: "Kolej Komuniti Beaufort",
+    department: "Unit Penyelidikan & Inovasi",
+    createdAt: "2025-01-02T10:00:00.000Z"
   },
   {
-    id: "usr-3",
-    icNumber: "850920-01-6789",
-    name: "Ts. Mohd Khairul bin Anuar",
-    phone: "019-4567890",
-    email: "khairul.anuar@kkbb.edu.my",
-    institution: "Kolej Komuniti Bayan Baru",
-    department: "Unit Sijil Teknologi Maklumat",
-    createdAt: "2026-01-08T09:15:00.000Z"
+    id: "usr-0003",
+    icNumber: "880303-12-7777",
+    name: "NORFAZIRAH BINTI KUSIN",
+    phone: "017-6543210",
+    email: "norfazirah@kkbf.edu.my",
+    institution: "Kolej Komuniti Beaufort",
+    department: "Unit Penyelidikan & Inovasi",
+    createdAt: "2025-01-03T09:15:00.000Z"
   }
 ];
 var initialApplications = [
