@@ -26,8 +26,14 @@ export async function downloadAsWordDoc(doc: GeneratedDocument, app?: Applicatio
       })
     });
 
-    const contentType = res.headers.get('content-type');
-    if (res.ok && contentType && contentType.includes('wordprocessingml')) {
+    const contentType = res.headers.get('content-type') || '';
+    
+    if (res.ok) {
+      if (contentType.includes('application/json')) {
+        const data = await res.json();
+        throw new Error(data.error || "Ralat semasa menjana dokumen di server.");
+      }
+
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const link = window.document.createElement('a');
@@ -45,8 +51,14 @@ export async function downloadAsWordDoc(doc: GeneratedDocument, app?: Applicatio
       window.document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } else {
-      const data = await res.json();
-      throw new Error(data.error || "Ralat semasa menjana dokumen di server.");
+      let errMsg = "Ralat semasa menjana dokumen di server.";
+      try {
+        const data = await res.json();
+        errMsg = data.error || errMsg;
+      } catch (e) {
+        errMsg = `Server error HTTP ${res.status}`;
+      }
+      throw new Error(errMsg);
     }
   } catch (err: any) {
     console.error('[Doc Export] Document generation failed:', err);
@@ -70,8 +82,14 @@ export async function downloadAsPdf(doc: GeneratedDocument, app?: ApplicationRec
       })
     });
 
-    const contentType = res.headers.get('content-type');
-    if (res.ok && contentType && contentType.includes('pdf')) {
+    const contentType = res.headers.get('content-type') || '';
+    
+    if (res.ok) {
+      if (contentType.includes('application/json')) {
+        const data = await res.json();
+        throw new Error(data.error || "Ralat semasa menjana PDF di server.");
+      }
+
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const link = window.document.createElement('a');
@@ -79,18 +97,26 @@ export async function downloadAsPdf(doc: GeneratedDocument, app?: ApplicationRec
       
       const baseFileName = (doc.fileName || `${doc.applicationId}_${doc.documentType}`)
         .replace(/\.pdf$/i, '')
+        .replace(/\.pptx$/i, '')
         .replace(/\.html$/i, '')
         .replace(/\.docx$/i, '')
         .replace(/\.doc$/i, '');
       
-      link.download = `${baseFileName}.pdf`;
+      const ext = contentType.includes('presentation') || contentType.includes('pptx') ? '.pptx' : '.pdf';
+      link.download = `${baseFileName}${ext}`;
       window.document.body.appendChild(link);
       link.click();
       window.document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } else {
-      const data = await res.json();
-      throw new Error(data.error || "Ralat semasa menjana PDF di server.");
+      let errMsg = "Ralat semasa menjana PDF di server.";
+      try {
+        const data = await res.json();
+        errMsg = data.error || errMsg;
+      } catch (e) {
+        errMsg = `Server error HTTP ${res.status}`;
+      }
+      throw new Error(errMsg);
     }
   } catch (err: any) {
     console.error('[Doc Export] PDF generation failed:', err);
