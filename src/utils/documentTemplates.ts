@@ -70,6 +70,12 @@ export const TEMPLATE_REGISTRY = {
     documentType: 'Sijil Inovasi',
     language: 'MS' as Language,
   },
+  research_certificate: {
+    id: 'research_certificate',
+    name: 'Sijil Penyelidikan (PDF)',
+    documentType: 'Sijil Penyelidikan',
+    language: 'MS' as Language,
+  },
   // Research Cat 1 & 2 BM
   research_cat1_ms_appointment: {
     id: 'research_cat1_ms_appointment',
@@ -236,6 +242,11 @@ export function getDocumentTemplatesForApplication(app: Partial<ApplicationRecor
           docType: 'Kertas Cadangan 1',
           fileName: `${appId}_CADANGAN.doc`,
         },
+        {
+          key: 'research_certificate',
+          docType: 'Sijil Penyelidikan',
+          fileName: `${appId}_SIJIL.pdf`,
+        },
       ];
     } else {
       return [
@@ -254,6 +265,11 @@ export function getDocumentTemplatesForApplication(app: Partial<ApplicationRecor
           docType: 'Proposal 1',
           fileName: `${appId}_CADANGAN.doc`,
         },
+        {
+          key: 'research_certificate',
+          docType: 'Sijil Penyelidikan',
+          fileName: `${appId}_SIJIL.pdf`,
+        },
       ];
     }
   } else if (cat === 'CAT_3') {
@@ -269,6 +285,11 @@ export function getDocumentTemplatesForApplication(app: Partial<ApplicationRecor
           docType: 'Kertas Cadangan 2',
           fileName: `${appId}_CADANGAN.doc`,
         },
+        {
+          key: 'research_certificate',
+          docType: 'Sijil Penyelidikan',
+          fileName: `${appId}_SIJIL.pdf`,
+        },
       ];
     } else {
       return [
@@ -281,6 +302,11 @@ export function getDocumentTemplatesForApplication(app: Partial<ApplicationRecor
           key: 'research_cat3_en_proposal',
           docType: 'Proposal 2',
           fileName: `${appId}_CADANGAN.doc`,
+        },
+        {
+          key: 'research_certificate',
+          docType: 'Sijil Penyelidikan',
+          fileName: `${appId}_SIJIL.pdf`,
         },
       ];
     }
@@ -297,6 +323,11 @@ export function getDocumentTemplatesForApplication(app: Partial<ApplicationRecor
           docType: 'Kertas Cadangan PPP',
           fileName: `${appId}_CADANGAN.doc`,
         },
+        {
+          key: 'research_certificate',
+          docType: 'Sijil Penyelidikan',
+          fileName: `${appId}_SIJIL.pdf`,
+        },
       ];
     } else {
       return [
@@ -309,6 +340,11 @@ export function getDocumentTemplatesForApplication(app: Partial<ApplicationRecor
           key: 'research_cat4_en_ppp_proposal',
           docType: 'PPP Proposal',
           fileName: `${appId}_CADANGAN.doc`,
+        },
+        {
+          key: 'research_certificate',
+          docType: 'Sijil Penyelidikan',
+          fileName: `${appId}_SIJIL.pdf`,
         },
       ];
     }

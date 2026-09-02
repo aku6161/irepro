@@ -381,7 +381,7 @@ function doPost(e) {
     }
 
     // 2. Gantikan placeholder berdasarkan jenis fail
-    var isSlides = (mimeType === MimeType.GOOGLE_SLIDES || mimeType.indexOf("presentation") !== -1 || templateId === "1UDlAfDrZZjJ0VVLaU8vPhpo5VknQgNpKdxIQuky3t4w");
+    var isSlides = (mimeType === MimeType.GOOGLE_SLIDES || mimeType.indexOf("presentation") !== -1 || templateId === "1UDlAfDrZZjJ0VVLaU8vPhpo5VknQgNpKdxIQuky3t4w" || templateId === "1LUguZnvmCb03OtcsiBInycXj-NHJVeTJOE_ncuCP5ZA");
 
     try {
       if (isSlides) {

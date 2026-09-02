@@ -2249,7 +2249,8 @@ var GOOGLE_DOC_TEMPLATES = {
   // Reuses Appendix A
   research_cat3_en_proposal: "1YzzZe3WI7CIRWC8vGNCYKTeHoQ0ujY_6C-BVy1cFw-s",
   research_cat4_en_ppp_form: "173yx1CFvgqJaMa0qIFMnZZNTXEuBHj90NIjHPe8ZgcI",
-  research_cat4_en_ppp_proposal: "17Zas_WPdmlVS5ox19a2qzGwOulp3TDuDbj_MB2pfEIM"
+  research_cat4_en_ppp_proposal: "17Zas_WPdmlVS5ox19a2qzGwOulp3TDuDbj_MB2pfEIM",
+  research_certificate: "1LUguZnvmCb03OtcsiBInycXj-NHJVeTJOE_ncuCP5ZA"
 };
 function buildReplacements(templateKey, app2) {
   const chiefName = app2.applicantName?.toUpperCase() || "";
