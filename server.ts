@@ -1786,7 +1786,7 @@ function buildReplacements(templateKey: string, app: any): Record<string, string
   const impactDepartment = (app.innovationData?.impactDepartment || app.researchData?.impactDepartment || '').trim();
   const instruments = (app.researchData?.instruments || '').trim();
 
-  const appId = app.id || app.applicationId || '';
+  const appId = app.applicationId || app.id || '';
 
   // Standard substitutions mapping template keys directly
   return {
