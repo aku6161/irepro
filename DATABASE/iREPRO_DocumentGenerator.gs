@@ -35,6 +35,44 @@ function initAuthorization() {
   }
 }
 
+// ⚡ JALANKAN FUNGSI INI UNTUK UJI AKSES TEMPLATE SIJIL ⚡
+function testSijil() {
+  var templateId = "1UDlAfDrZZjJ0VVLaU8vPhpo5VknQgNpKdxIQuky3t4w"; // Sijil Inovasi (Google Slides)
+  try {
+    var file = DriveApp.getFileById(templateId);
+    Logger.log("BERJAYA! Template Sijil dijumpai: " + file.getName() + " | Jenis: " + file.getMimeType());
+    var copy = file.makeCopy("iREPRO_TEST_SIJIL_COPY");
+    var copyId = copy.getId();
+    Logger.log("BERJAYA! Salinan dibuat. ID: " + copyId);
+
+    // Cuba replace placeholder
+    var presentation = SlidesApp.openById(copyId);
+    presentation.replaceAllText("[TAJUK]", "SISTEM IREPRO");
+    presentation.replaceAllText("[NAMA]", "AHMAD BIN ALI");
+    presentation.replaceAllText("[KATEGORI]", "PENSYARAH");
+    presentation.replaceAllText("[TARIKH]", "2 September 2026");
+    presentation.saveAndClose();
+    Logger.log("BERJAYA! Placeholder telah digantikan.");
+
+    // Export sebagai PDF
+    var token = ScriptApp.getOAuthToken();
+    var exportUrl = "https://www.googleapis.com/drive/v2/files/" + copyId + "/export?mimeType=application%2Fpdf";
+    var response = UrlFetchApp.fetch(exportUrl, {
+      headers: { "Authorization": "Bearer " + token },
+      muteHttpExceptions: true
+    });
+    Logger.log("Export PDF status: " + response.getResponseCode() + " | Saiz: " + response.getContent().length + " bytes");
+
+    // Buang salinan test
+    DriveApp.getFileById(copyId).setTrashed(true);
+    Logger.log("SEMUA BERJAYA! Fungsi generateDocument sepatutnya berfungsi.");
+  } catch (err) {
+    Logger.log("RALAT: " + err.toString());
+    Logger.log("Akaun semasa: " + Session.getActiveUser().getEmail());
+    Logger.log("Penyelesaian: Pastikan akaun di atas ada akses EDIT pada template Sijil.");
+  }
+}
+
 // ⚡ JALANKAN FUNGSI INI UNTUK UJI JIKA AKAUN ANDA BOLEH AKSES TEMPLATE ⚡
 function testCopy() {
   var templateId = "1oTMDV7wNeVI0M8tTHZBxRBuxHZ9Vw0wLTz19h8h7jvw"; // BM Inovasi Proposal
@@ -49,6 +87,7 @@ function testCopy() {
     Logger.log("Penyelesaian: Sila pastikan akaun Google anda (" + Session.getActiveUser().getEmail() + ") mempunyai akses Edit/View pada template Google Docs ini, atau buat salinan template baru dan masukkan ID baru.");
   }
 }
+
 
 // Health check via GET - verify code version is correct
 // Also supports appendRow via GET query params for server-to-server calls
