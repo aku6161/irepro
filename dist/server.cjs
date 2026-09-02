@@ -2268,7 +2268,14 @@ function buildReplacements(templateKey, app2) {
   const impactInstitution = (app2.innovationData?.impactInstitution || app2.researchData?.impactInstitution || "").trim();
   const impactDepartment = (app2.innovationData?.impactDepartment || app2.researchData?.impactDepartment || "").trim();
   const instruments = (app2.researchData?.instruments || "").trim();
+  const appId = app2.id || app2.applicationId || "";
   return {
+    "[APPLICATION ID]": appId,
+    "[APPLICATION_ID]": appId,
+    "[NO_PERMOHONAN]": appId,
+    "[ID_PERMOHONAN]": appId,
+    "[ID PERMOHONAN]": appId,
+    "[NO PERMOHONAN]": appId,
     "[NAMA KETUA]": chiefName,
     "[NAMA]": chiefName,
     "[ NAMA ]": chiefName,

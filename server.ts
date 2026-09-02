@@ -1786,8 +1786,16 @@ function buildReplacements(templateKey: string, app: any): Record<string, string
   const impactDepartment = (app.innovationData?.impactDepartment || app.researchData?.impactDepartment || '').trim();
   const instruments = (app.researchData?.instruments || '').trim();
 
+  const appId = app.id || app.applicationId || '';
+
   // Standard substitutions mapping template keys directly
   return {
+    '[APPLICATION ID]': appId,
+    '[APPLICATION_ID]': appId,
+    '[NO_PERMOHONAN]': appId,
+    '[ID_PERMOHONAN]': appId,
+    '[ID PERMOHONAN]': appId,
+    '[NO PERMOHONAN]': appId,
     '[NAMA KETUA]': chiefName,
     '[NAMA]': chiefName,
     '[ NAMA ]': chiefName,

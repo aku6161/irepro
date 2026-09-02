@@ -464,13 +464,20 @@ function doPost(e) {
     var pdfBytes = pdfResponse.getContent();
     var base64Pdf = Utilities.base64Encode(pdfBytes);
 
-    // Buang salinan dari Drive selepas export (opsional - kurangkan sampah Drive)
-    // newFile.setTrashed(true);
+    // Padam salinan sementara dari Drive selepas export supaya tidak meninggalkan fail sampah di Drive
+    try {
+      DriveApp.getFileById(newDocId).setTrashed(true);
+    } catch (trashErr) {
+      UrlFetchApp.fetch("https://www.googleapis.com/drive/v2/files/" + newDocId, {
+        method: "delete",
+        headers: { "Authorization": "Bearer " + token },
+        muteHttpExceptions: true
+      });
+    }
 
     return createJsonResponse({
       success: true,
       documentId: newDocId,
-      driveUrl: newFile.getUrl(),
       pdfBase64: base64Pdf,
       method: "base64-pdf"
     });
