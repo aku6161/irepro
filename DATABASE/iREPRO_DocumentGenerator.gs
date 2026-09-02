@@ -348,20 +348,80 @@ function doPost(e) {
       return createJsonResponse({ success: false, error: "templateId diperlukan." });
     }
 
-    // 1. Salin fail template dalam Google Drive
-    var templateFile = DriveApp.getFileById(templateId);
-    var mimeType = templateFile.getMimeType();
-    var newFile = templateFile.makeCopy(fileName);
-    var newDocId = newFile.getId();
+    // 1. Salin fail template dalam Google Drive (Guna DriveApp, jika gagal guna Drive REST API fallback)
+    var newDocId;
+    var mimeType = "";
 
-    // Beri akses awam agar boleh dibaca
-    newFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    try {
+      var templateFile = DriveApp.getFileById(templateId);
+      mimeType = templateFile.getMimeType();
+      var newFile = templateFile.makeCopy(fileName);
+      newDocId = newFile.getId();
+      try { newFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch(e) {}
+    } catch (driveErr) {
+      // Fallback jika DriveApp dihalang oleh kebenaran Apps Script Web App
+      var token = ScriptApp.getOAuthToken();
+      var copyUrl = "https://www.googleapis.com/drive/v2/files/" + templateId + "/copy";
+      var copyRes = UrlFetchApp.fetch(copyUrl, {
+        method: "post",
+        headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+        payload: JSON.stringify({ title: fileName }),
+        muteHttpExceptions: true
+      });
+      var copyJson = JSON.parse(copyRes.getContentText());
+      if (copyJson.id) {
+        newDocId = copyJson.id;
+        mimeType = copyJson.mimeType || "";
+      } else {
+        return createJsonResponse({ 
+          success: false, 
+          error: "Access denied DriveApp & REST API: " + (copyJson.error ? copyJson.error.message : driveErr.toString()) 
+        });
+      }
+    }
 
     // 2. Gantikan placeholder berdasarkan jenis fail
-    var isSlides = (mimeType === MimeType.GOOGLE_SLIDES);
+    var isSlides = (mimeType === MimeType.GOOGLE_SLIDES || mimeType.indexOf("presentation") !== -1 || templateId === "1UDlAfDrZZjJ0VVLaU8vPhpo5VknQgNpKdxIQuky3t4w");
 
-    if (isSlides) {
-      // ── Google Slides (Presentation) ──
+    try {
+      if (isSlides) {
+        // ── Google Slides (Presentation) ──
+        var presentation = SlidesApp.openById(newDocId);
+        for (var key in replacements) {
+          if (replacements.hasOwnProperty(key)) {
+            presentation.replaceAllText(key, String(replacements[key] || ""));
+          }
+        }
+        presentation.saveAndClose();
+      } else {
+        // ── Google Docs (Document) ──
+        var doc = DocumentApp.openById(newDocId);
+        var body = doc.getBody();
+        for (var key in replacements) {
+          if (replacements.hasOwnProperty(key)) {
+            body.replaceText(escapeRegex(key), replacements[key] || "");
+          }
+        }
+        var header = doc.getHeader();
+        if (header) {
+          for (var key in replacements) {
+            if (replacements.hasOwnProperty(key)) {
+              header.replaceText(escapeRegex(key), replacements[key] || "");
+            }
+          }
+        }
+        var footer = doc.getFooter();
+        if (footer) {
+          for (var key in replacements) {
+            if (replacements.hasOwnProperty(key)) {
+              footer.replaceText(escapeRegex(key), replacements[key] || "");
+            }
+          }
+        }
+        doc.saveAndClose();
+      }
+    } catch (openErr) {
+      // Auto fallback if DocumentApp failed on Presentation or vice-versa
       var presentation = SlidesApp.openById(newDocId);
       for (var key in replacements) {
         if (replacements.hasOwnProperty(key)) {
@@ -369,32 +429,7 @@ function doPost(e) {
         }
       }
       presentation.saveAndClose();
-    } else {
-      // ── Google Docs (Document) ──
-      var doc = DocumentApp.openById(newDocId);
-      var body = doc.getBody();
-      for (var key in replacements) {
-        if (replacements.hasOwnProperty(key)) {
-          body.replaceText(escapeRegex(key), replacements[key] || "");
-        }
-      }
-      var header = doc.getHeader();
-      if (header) {
-        for (var key in replacements) {
-          if (replacements.hasOwnProperty(key)) {
-            header.replaceText(escapeRegex(key), replacements[key] || "");
-          }
-        }
-      }
-      var footer = doc.getFooter();
-      if (footer) {
-        for (var key in replacements) {
-          if (replacements.hasOwnProperty(key)) {
-            footer.replaceText(escapeRegex(key), replacements[key] || "");
-          }
-        }
-      }
-      doc.saveAndClose();
+      isSlides = true;
     }
 
     // 3. Export sebagai PDF menggunakan Drive API v2 + OAuth token (tanpa perlu URL awam)
