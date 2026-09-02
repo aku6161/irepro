@@ -28,6 +28,7 @@ export const AdminDashboard: React.FC = () => {
     stats, 
     deleteApplication, 
     setEditingApplication, 
+    activeView,
     setActiveView, 
     showToast,
     refreshData,
@@ -260,6 +261,130 @@ export const AdminDashboard: React.FC = () => {
       await deleteUser(user.id || user.icNumber);
     }
   };
+
+  if (activeView === 'admin_users') {
+    return (
+      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+        {/* Admin Top Header Banner for Pengguna Page */}
+        <div className="bg-slate-950 text-white rounded-2xl p-6 sm:p-8 shadow-xl border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-6 relative overflow-hidden">
+          <div className="absolute right-0 top-0 bottom-0 w-80 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="relative z-10">
+            <div className="inline-flex items-center space-x-2 bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 text-xs px-3 py-1 rounded-full mb-3">
+              <Users className="w-4 h-4 text-indigo-400" />
+              <span>Pentadbir (KUPIK)</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+              Senarai Pengguna iREPRO
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-2xl font-normal">
+              Pengurusan maklumat pengguna berdaftar dan senarai pemohon sistem iREPRO.
+            </p>
+          </div>
+
+          <div className="flex items-center space-x-2 shrink-0 relative z-10">
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="flex items-center space-x-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 text-xs font-semibold px-3.5 py-2.5 rounded-xl transition-all"
+              title="Segar Semula Data"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-indigo-400' : ''}`} />
+              <span>Segar Semula</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Users Table Card */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+          <div className="p-4 sm:p-6 border-b border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                <Users className="w-5 h-5 text-indigo-600" />
+                <span>Pengguna Berdaftar ({filteredUserList.length})</span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Pengurusan rekod akaun dan profil pemohon iREPRO.
+              </p>
+            </div>
+
+            {/* Search bar for Users */}
+            <div className="relative w-full sm:w-72">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Cari pengguna, emel, institusi..."
+                value={userSearchQuery}
+                onChange={(e) => setUserSearchQuery(e.target.value)}
+                className="w-full text-xs bg-white border border-slate-300 rounded-xl pl-9 pr-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+              />
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-100/70 text-slate-600 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
+                <tr>
+                  <th className="py-3.5 px-4">ID Pengguna</th>
+                  <th className="py-3.5 px-4">Nama</th>
+                  <th className="py-3.5 px-4">Institusi</th>
+                  <th className="py-3.5 px-4">Emel</th>
+                  <th className="py-3.5 px-4 text-center">Tindakan</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {filteredUserList.length > 0 ? (
+                  filteredUserList.map((u, idx) => (
+                    <tr key={u.id || u.icNumber || idx} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-3.5 px-4 font-mono font-bold whitespace-nowrap">
+                        <span className="bg-indigo-50 border border-indigo-100 text-indigo-700 px-2.5 py-1 rounded-lg text-[11px]">
+                          {u.id || `USR-${1000 + idx + 1}`}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <div className="font-bold text-slate-900">{u.name}</div>
+                        {u.icNumber && <div className="text-[10px] text-slate-400 font-mono mt-0.5">KP: {u.icNumber}</div>}
+                      </td>
+                      <td className="py-3.5 px-4 font-medium">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-800 border border-slate-200">
+                          {u.institution || 'KOLEJ KOMUNITI BEAUFORT'}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 font-mono text-[11px]">
+                        {u.email && u.email !== '-' ? (
+                          <a href={`mailto:${u.email}`} className="text-blue-600 hover:underline">
+                            {u.email}
+                          </a>
+                        ) : (
+                          <span className="text-slate-400 italic">Tiada emel</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                        <button
+                          onClick={() => handleDeleteUserClick(u)}
+                          className="inline-flex items-center space-x-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-[11px] font-semibold px-3 py-1.5 rounded-xl transition-all shadow-2xs"
+                          title="Padam Pengguna"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                          <span>Padam</span>
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-slate-400 italic">
+                      Tiada rekod pengguna dijumpai.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
@@ -584,104 +709,6 @@ export const AdminDashboard: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* KAD MENU PENGGUNA (Users List Card) */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="p-4 sm:p-6 border-b border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-base font-bold text-slate-900 flex items-center space-x-2">
-              <Users className="w-5 h-5 text-indigo-600" />
-              <span>Menu Pengguna ({filteredUserList.length})</span>
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Senarai maklumat pengguna berdaftar dan pemohon sistem iREPRO.
-            </p>
-          </div>
-
-          {/* Search bar for Users */}
-          <div className="relative w-full sm:w-72">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Cari pengguna, emel, institusi..."
-              value={userSearchQuery}
-              onChange={(e) => setUserSearchQuery(e.target.value)}
-              className="w-full text-xs bg-white border border-slate-300 rounded-xl pl-9 pr-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-            />
-          </div>
-        </div>
-
-        {/* Table of Users */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-100/70 text-slate-600 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
-              <tr>
-                <th className="py-3.5 px-4">ID Pengguna</th>
-                <th className="py-3.5 px-4">Nama</th>
-                <th className="py-3.5 px-4">Institusi</th>
-                <th className="py-3.5 px-4">Emel</th>
-                <th className="py-3.5 px-4 text-center">Tindakan</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-700">
-              {filteredUserList.length > 0 ? (
-                filteredUserList.map((u, idx) => (
-                  <tr key={u.id || u.icNumber || idx} className="hover:bg-slate-50/80 transition-colors">
-                    {/* ID Pengguna */}
-                    <td className="py-3.5 px-4 font-mono font-bold whitespace-nowrap">
-                      <span className="bg-indigo-50 border border-indigo-100 text-indigo-700 px-2.5 py-1 rounded-lg text-[11px]">
-                        {u.id || `USR-${1000 + idx + 1}`}
-                      </span>
-                    </td>
-
-                    {/* Nama */}
-                    <td className="py-3.5 px-4">
-                      <div className="font-bold text-slate-900">{u.name}</div>
-                      {u.icNumber && <div className="text-[10px] text-slate-400 font-mono mt-0.5">KP: {u.icNumber}</div>}
-                    </td>
-
-                    {/* Institusi */}
-                    <td className="py-3.5 px-4 font-medium">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-800 border border-slate-200">
-                        {u.institution || 'KOLEJ KOMUNITI BEAUFORT'}
-                      </span>
-                    </td>
-
-                    {/* Emel */}
-                    <td className="py-3.5 px-4 font-mono text-[11px]">
-                      {u.email && u.email !== '-' ? (
-                        <a href={`mailto:${u.email}`} className="text-blue-600 hover:underline">
-                          {u.email}
-                        </a>
-                      ) : (
-                        <span className="text-slate-400 italic">Tiada emel</span>
-                      )}
-                    </td>
-
-                    {/* Tindakan Padam */}
-                    <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                      <button
-                        onClick={() => handleDeleteUserClick(u)}
-                        className="inline-flex items-center space-x-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-[11px] font-semibold px-3 py-1.5 rounded-xl transition-all shadow-2xs"
-                        title="Padam Pengguna"
-                      >
-                        <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                        <span>Padam</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={5} className="py-8 text-center text-slate-400 italic">
-                    Tiada rekod pengguna dijumpai.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
         </div>
       </div>
 

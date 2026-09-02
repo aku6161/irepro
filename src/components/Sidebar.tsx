@@ -11,7 +11,8 @@ import {
   X,
   ExternalLink,
   ShieldCheck,
-  User
+  User,
+  Users
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -87,6 +88,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
               >
                 <LayoutDashboard className="w-4 h-4 text-red-400" />
                 <span>Dashboard Admin</span>
+              </button>
+
+              <button
+                id="sidebar-link-admin-users"
+                onClick={() => handleNav('admin_users')}
+                className={navItemClass('admin_users')}
+              >
+                <Users className="w-4 h-4 text-indigo-400" />
+                <span>Pengguna</span>
               </button>
             </div>
           ) : (

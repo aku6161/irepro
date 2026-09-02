@@ -78,7 +78,7 @@ export function App() {
             )
           )}
 
-          {(activeView === 'admin_dashboard' || activeView === 'admin_all_applications' || activeView === 'admin_statistics') && (
+          {(activeView === 'admin_dashboard' || activeView === 'admin_users' || activeView === 'admin_all_applications' || activeView === 'admin_statistics') && (
             <AdminDashboard />
           )}
 
