@@ -314,10 +314,51 @@ function doPost(e) {
     var newDocId = newFile.getId();
 
     // 2. Buka salinan dan gantikan placeholder
-    var mimeType = templateFile.getMimeType();
-    var isPresentation = mimeType === MimeType.GOOGLE_SLIDES || (mimeType && mimeType.indexOf("presentation") !== -1);
+    try {
+      var doc = DocumentApp.openById(newDocId);
+      var body = doc.getBody();
 
-    if (isPresentation) {
+      for (var key in replacements) {
+        if (replacements.hasOwnProperty(key)) {
+          body.replaceText(escapeRegex(key), replacements[key] || "");
+        }
+      }
+
+      // Gantikan dalam header jika ada
+      var header = doc.getHeader();
+      if (header) {
+        for (var key in replacements) {
+          if (replacements.hasOwnProperty(key)) {
+            header.replaceText(escapeRegex(key), replacements[key] || "");
+          }
+        }
+      }
+
+      // Gantikan dalam footer jika ada
+      var footer = doc.getFooter();
+      if (footer) {
+        for (var key in replacements) {
+          if (replacements.hasOwnProperty(key)) {
+            footer.replaceText(escapeRegex(key), replacements[key] || "");
+          }
+        }
+      }
+
+      doc.saveAndClose();
+      newFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+      var docxUrl = "https://docs.google.com/document/d/" + newDocId + "/export?format=docx";
+      var pdfUrl = "https://docs.google.com/document/d/" + newDocId + "/export?format=pdf";
+
+      return createJsonResponse({
+        success: true,
+        documentId: newDocId,
+        driveUrl: newFile.getUrl(),
+        pdfUrl: pdfUrl,
+        docxUrl: docxUrl
+      });
+    } catch (docErr) {
+      // Presentation / Google Slides fallback
       var presentation = SlidesApp.openById(newDocId);
       for (var key in replacements) {
         if (replacements.hasOwnProperty(key)) {
@@ -337,37 +378,6 @@ function doPost(e) {
         docxUrl: pdfUrl
       });
     }
-
-    var doc = DocumentApp.openById(newDocId);
-    var body = doc.getBody();
-
-    for (var key in replacements) {
-      if (replacements.hasOwnProperty(key)) {
-        body.replaceText(escapeRegex(key), replacements[key] || "");
-      }
-    }
-
-    // Gantikan dalam header jika ada
-    var header = doc.getHeader();
-    if (header) {
-      for (var key in replacements) {
-        if (replacements.hasOwnProperty(key)) {
-          header.replaceText(escapeRegex(key), replacements[key] || "");
-        }
-      }
-    }
-
-    // Gantikan dalam footer jika ada
-    var footer = doc.getFooter();
-    if (footer) {
-      for (var key in replacements) {
-        if (replacements.hasOwnProperty(key)) {
-          footer.replaceText(escapeRegex(key), replacements[key] || "");
-        }
-      }
-    }
-
-    doc.saveAndClose();
 
     // 3. Beri akses kepada sesiapa yang ada pautan
     newFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);

@@ -2406,7 +2406,8 @@ app.post("/api/documents/generate-pdf", async (req, res) => {
     const category = appRecord.applicationType === "INOVASI" ? appRecord.innovationData?.category || "Pensyarah / Pelajar" : appRecord.researchData?.category || "Penyelidikan";
     replacements["[KATEGORI]"] = category;
     replacements["[TARIKH]"] = (/* @__PURE__ */ new Date()).toLocaleDateString("ms-MY", { day: "numeric", month: "long", year: "numeric" });
-    const appsScriptUrl = process.env.APPS_SCRIPT_URL;
+    const defaultAppsScriptUrl = "https://script.google.com/macros/s/AKfycbx4N_KtHqt7wbI70hJEQIaynFsv34CHj_sdrWE96VNkXZCRALXdmd8XDrxCHPr2ot31Eg/exec";
+    const appsScriptUrl = process.env.APPS_SCRIPT_URL || defaultAppsScriptUrl;
     if (appsScriptUrl) {
       try {
         console.log(`[PDF Generator] Generating PDF via Apps Script for ${applicationId} (${templateKey})...`);
@@ -2433,48 +2434,27 @@ app.post("/api/documents/generate-pdf", async (req, res) => {
             res.setHeader("Content-Disposition", `attachment; filename="${docName2}"`);
             return res.send(buffer2);
           }
+        } else {
+          console.warn(`[PDF Generator] Apps Script response:`, scriptData);
         }
       } catch (err) {
         console.warn(`[PDF Generator] Apps Script PDF generation failed, falling back:`, err.message);
       }
     }
-    console.log(`[PDF Generator] Fetching presentation PPTX template: ${templateKey} (${templateId})...`);
-    let pptxUrl = `https://docs.google.com/presentation/d/${templateId}/export/pptx`;
-    let pptxRes = await fetch(pptxUrl);
-    if (pptxRes.ok) {
-      const arrayBuffer2 = await pptxRes.arrayBuffer();
-      const buffer2 = Buffer.from(arrayBuffer2);
-      const zip = new import_pizzip.default(buffer2);
-      const doc = new import_docxtemplater.default(zip, {
-        delimiters: { start: "[", end: "]" },
-        paragraphLoop: true,
-        linebreaks: true
-      });
-      const cleanReplacements = {};
-      for (const [key, value] of Object.entries(replacements)) {
-        const cleanKey = key.replace(/^\[/, "").replace(/\]$/, "");
-        cleanReplacements[cleanKey] = value;
-      }
-      doc.render(cleanReplacements);
-      const outBuffer = doc.getZip().generate({
-        type: "nodebuffer",
-        compression: "DEFLATE"
-      });
-      const docName2 = `${applicationId}_${templateKey}.pptx`;
-      console.log(`[PDF Generator] Presentation ${docName2} rendered with replaced placeholders (${outBuffer.length} bytes)!`);
-      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.presentationml.presentation");
-      res.setHeader("Content-Disposition", `attachment; filename="${docName2}"`);
-      return res.send(outBuffer);
-    }
+    console.log(`[PDF Generator] Downloading direct PDF export for ${templateKey} (${templateId})...`);
     let pdfUrl = `https://docs.google.com/presentation/d/${templateId}/export/pdf`;
     let pdfRes = await fetch(pdfUrl);
     if (!pdfRes.ok) {
       pdfUrl = `https://docs.google.com/document/d/${templateId}/export?format=pdf`;
       pdfRes = await fetch(pdfUrl);
     }
+    if (!pdfRes.ok) {
+      return res.status(500).json({ error: `Gagal memuat turun PDF daripada Google (HTTP ${pdfRes.status}).` });
+    }
     const arrayBuffer = await pdfRes.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     const docName = `${applicationId}_${templateKey}.pdf`;
+    console.log(`[PDF Generator] PDF Document ${docName} successfully generated (${buffer.length} bytes)!`);
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${docName}"`);
     res.send(buffer);

@@ -102,8 +102,7 @@ export async function downloadAsPdf(doc: GeneratedDocument, app?: ApplicationRec
         .replace(/\.docx$/i, '')
         .replace(/\.doc$/i, '');
       
-      const ext = contentType.includes('presentation') || contentType.includes('pptx') ? '.pptx' : '.pdf';
-      link.download = `${baseFileName}${ext}`;
+      link.download = `${baseFileName}.pdf`;
       window.document.body.appendChild(link);
       link.click();
       window.document.body.removeChild(link);
