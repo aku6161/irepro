@@ -1939,31 +1939,107 @@ app.post('/api/documents/generate-pdf', async (req, res) => {
       return res.status(400).json({ error: 'Templat dokumen tidak dijumpai.' });
     }
 
-    console.log(`[Local PDF Generator] Downloading PDF template: ${templateKey} (${templateId})...`);
+    const replacements = buildReplacements(templateKey, appRecord);
+    
+    // Add additional certificate specific placeholders
+    const category = appRecord.applicationType === 'INOVASI' 
+      ? (appRecord.innovationData?.category || 'Pensyarah / Pelajar')
+      : (appRecord.researchData?.category || 'Penyelidikan');
+
+    replacements['[KATEGORI]'] = category;
+    replacements['[TARIKH]'] = new Date().toLocaleDateString('ms-MY', { day: 'numeric', month: 'long', year: 'numeric' });
+
+    const appsScriptUrl = process.env.APPS_SCRIPT_URL;
+    
+    // 1. Primary Method: Use Apps Script (SlidesApp) if APPS_SCRIPT_URL is configured
+    if (appsScriptUrl) {
+      try {
+        console.log(`[PDF Generator] Generating PDF via Apps Script for ${applicationId} (${templateKey})...`);
+        const scriptRes = await fetch(appsScriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'generateDocument',
+            templateId,
+            fileName: `${applicationId}_${templateKey}.pdf`,
+            replacements
+          })
+        });
+
+        const scriptData = await scriptRes.json().catch(() => ({}));
+        if (scriptData.success && (scriptData.pdfUrl || scriptData.docxUrl)) {
+          const targetPdfUrl = scriptData.pdfUrl || scriptData.docxUrl;
+          console.log(`[PDF Generator] Apps Script generated PDF at: ${targetPdfUrl}`);
+          const pdfFetchRes = await fetch(targetPdfUrl);
+          if (pdfFetchRes.ok) {
+            const arrayBuffer = await pdfFetchRes.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            const docName = `${applicationId}_${templateKey}.pdf`;
+
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename="${docName}"`);
+            return res.send(buffer);
+          }
+        }
+      } catch (err: any) {
+        console.warn(`[PDF Generator] Apps Script PDF generation failed, falling back:`, err.message);
+      }
+    }
+
+    // 2. Fallback Method: Render PPTX with Docxtemplater for Google Presentation Slides
+    console.log(`[PDF Generator] Fetching presentation PPTX template: ${templateKey} (${templateId})...`);
+    let pptxUrl = `https://docs.google.com/presentation/d/${templateId}/export/pptx`;
+    let pptxRes = await fetch(pptxUrl);
+    
+    if (pptxRes.ok) {
+      const arrayBuffer = await pptxRes.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      const zip = new PizZip(buffer);
+      const doc = new Docxtemplater(zip, {
+        delimiters: { start: '[', end: ']' },
+        paragraphLoop: true,
+        linebreaks: true
+      });
+
+      const cleanReplacements: Record<string, string> = {};
+      for (const [key, value] of Object.entries(replacements)) {
+        const cleanKey = key.replace(/^\[/, '').replace(/\]$/, '');
+        cleanReplacements[cleanKey] = value;
+      }
+
+      doc.render(cleanReplacements);
+
+      const outBuffer = doc.getZip().generate({
+        type: 'nodebuffer',
+        compression: 'DEFLATE'
+      });
+
+      const docName = `${applicationId}_${templateKey}.pptx`;
+      console.log(`[PDF Generator] Presentation ${docName} rendered with replaced placeholders (${outBuffer.length} bytes)!`);
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+      res.setHeader('Content-Disposition', `attachment; filename="${docName}"`);
+      return res.send(outBuffer);
+    }
+
+    // 3. Fallback: Raw export
     let pdfUrl = `https://docs.google.com/presentation/d/${templateId}/export/pdf`;
     let pdfRes = await fetch(pdfUrl);
-    
     if (!pdfRes.ok) {
       pdfUrl = `https://docs.google.com/document/d/${templateId}/export?format=pdf`;
       pdfRes = await fetch(pdfUrl);
-    }
-
-    if (!pdfRes.ok) {
-      return res.status(500).json({ error: `Gagal memuat turun PDF daripada Google (HTTP ${pdfRes.status}).` });
     }
 
     const arrayBuffer = await pdfRes.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
     const docName = `${applicationId}_${templateKey}.pdf`;
-    console.log(`[Local PDF Generator] PDF Document ${docName} successfully generated (${buffer.length} bytes)!`);
-
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${docName}"`);
     res.send(buffer);
 
   } catch (err: any) {
-    console.error('[Local PDF Generator] Failed to generate PDF:', err.message);
+    console.error('[PDF Generator] Failed to generate PDF:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

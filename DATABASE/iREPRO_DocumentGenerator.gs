@@ -314,6 +314,30 @@ function doPost(e) {
     var newDocId = newFile.getId();
 
     // 2. Buka salinan dan gantikan placeholder
+    var mimeType = templateFile.getMimeType();
+    var isPresentation = mimeType === MimeType.GOOGLE_SLIDES || (mimeType && mimeType.indexOf("presentation") !== -1);
+
+    if (isPresentation) {
+      var presentation = SlidesApp.openById(newDocId);
+      for (var key in replacements) {
+        if (replacements.hasOwnProperty(key)) {
+          presentation.replaceAllText(key, replacements[key] || "");
+        }
+      }
+      presentation.saveAndClose();
+      newFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+      var pdfUrl = "https://docs.google.com/presentation/d/" + newDocId + "/export/pdf";
+
+      return createJsonResponse({
+        success: true,
+        documentId: newDocId,
+        driveUrl: newFile.getUrl(),
+        pdfUrl: pdfUrl,
+        docxUrl: pdfUrl
+      });
+    }
+
     var doc = DocumentApp.openById(newDocId);
     var body = doc.getBody();
 
