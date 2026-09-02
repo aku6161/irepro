@@ -10,7 +10,8 @@ import {
   FolderKanban,
   X,
   ExternalLink,
-  ShieldCheck
+  ShieldCheck,
+  User
 } from 'lucide-react';
 
 interface SidebarProps {

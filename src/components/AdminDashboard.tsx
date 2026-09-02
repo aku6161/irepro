@@ -14,7 +14,8 @@ import {
   CheckCircle2,
   FileText,
   BarChart3,
-  TrendingUp
+  TrendingUp,
+  Users
 } from 'lucide-react';
 import { downloadDocumentByTemplateKey } from '../utils/docExport';
 import { getDocumentTemplatesForApplication } from '../utils/documentTemplates';
@@ -37,21 +38,26 @@ export const AdminDashboard: React.FC = () => {
 
   // Calculate dynamic YoY statistics (3 years comparison)
   const yearsToCompare = (() => {
-    const yearsSet = new Set(applications.map(app => app.createdAt ? new Date(app.createdAt).getFullYear() : Number(app.year)));
+    const yearsSet = new Set<number>(applications.map(app => (app.createdAt ? new Date(app.createdAt).getFullYear() : Number(app.year)) as number));
     const sorted = Array.from(yearsSet).sort((a, b) => b - a).filter(y => !isNaN(y) && y > 0);
     if (sorted.length >= 3) {
       return sorted.slice(0, 3);
     }
     const current = new Date().getFullYear();
     const fallback = [current, current - 1, current - 2];
-    const merged = Array.from(new Set([...sorted, ...fallback])).sort((a, b) => b - a);
+    const merged = Array.from(new Set<number>([...sorted, ...fallback])).sort((a, b) => b - a);
     return merged.slice(0, 3);
   })();
 
   const statsByYear = yearsToCompare.map(yr => {
-    const inovasiCount = applications.filter(app => {
+    const inovasiPensyarahCount = applications.filter(app => {
       const appYear = app.createdAt ? new Date(app.createdAt).getFullYear() : Number(app.year);
-      return appYear === yr && app.applicationType === 'INOVASI';
+      return appYear === yr && app.applicationType === 'INOVASI' && app.category === 'PENSYARAH';
+    }).length;
+
+    const inovasiPelajarCount = applications.filter(app => {
+      const appYear = app.createdAt ? new Date(app.createdAt).getFullYear() : Number(app.year);
+      return appYear === yr && app.applicationType === 'INOVASI' && app.category === 'PELAJAR';
     }).length;
 
     const penyelidikanCount = applications.filter(app => {
@@ -61,16 +67,18 @@ export const AdminDashboard: React.FC = () => {
 
     return {
       year: yr,
-      inovasi: inovasiCount,
+      inovasiPensyarah: inovasiPensyarahCount,
+      inovasiPelajar: inovasiPelajarCount,
       penyelidikan: penyelidikanCount,
-      total: inovasiCount + penyelidikanCount
+      total: inovasiPensyarahCount + inovasiPelajarCount + penyelidikanCount
     };
   });
 
   const handleDownloadDoc = (app: ApplicationRecord, templateKey: string) => {
     try {
       const result = downloadDocumentByTemplateKey(app, templateKey);
-      showToast(`Dokumen ${result.docType} berjaya dimuat turun (.doc)!`, 'success');
+      const ext = result.fileName.endsWith('.pdf') ? '.pdf' : '.doc';
+      showToast(`Dokumen ${result.docType} berjaya dimuat turun (${ext})!`, 'success');
     } catch (err) {
       showToast('Gagal memuat turun dokumen.', 'error');
     }
@@ -79,7 +87,15 @@ export const AdminDashboard: React.FC = () => {
   // Filtered applications (Sorted by Application ID)
   const filteredApps = applications
     .filter((app) => {
-      if (filterType !== 'ALL' && app.applicationType !== filterType) return false;
+      if (filterType !== 'ALL') {
+        if (filterType === 'INOVASI_PENSYARAH') {
+          if (app.applicationType !== 'INOVASI' || app.category !== 'PENSYARAH') return false;
+        } else if (filterType === 'INOVASI_PELAJAR') {
+          if (app.applicationType !== 'INOVASI' || app.category !== 'PELAJAR') return false;
+        } else {
+          if (app.applicationType !== filterType) return false;
+        }
+      }
       const appYear = app.createdAt ? new Date(app.createdAt).getFullYear() : Number(app.year);
       if (filterYear !== 'ALL' && appYear !== Number(filterYear)) return false;
 
@@ -101,9 +117,33 @@ export const AdminDashboard: React.FC = () => {
       return true;
     })
     .sort((a, b) => {
+      const parseDate = (dStr: any) => {
+        if (!dStr) return 0;
+        const d = new Date(dStr);
+        if (!isNaN(d.getTime())) return d.getTime();
+        // Fallback for DD/MM/YYYY HH:MM:SS format
+        const parts = String(dStr).split(/[\/\-\s:]/);
+        if (parts.length >= 3) {
+          const day = parseInt(parts[0], 10);
+          const month = parseInt(parts[1], 10) - 1;
+          const year = parseInt(parts[2], 10);
+          const hours = parts[3] ? parseInt(parts[3], 10) : 0;
+          const minutes = parts[4] ? parseInt(parts[4], 10) : 0;
+          const seconds = parts[5] ? parseInt(parts[5], 10) : 0;
+          const pd = new Date(year, month, day, hours, minutes, seconds);
+          if (!isNaN(pd.getTime())) return pd.getTime();
+        }
+        return 0;
+      };
+
+      const dateA = parseDate(a.createdAt);
+      const dateB = parseDate(b.createdAt);
+      if (dateB !== dateA) {
+        return dateB - dateA;
+      }
       const idA = a.applicationId || '';
       const idB = b.applicationId || '';
-      return idA.localeCompare(idB, undefined, { numeric: true, sensitivity: 'base' });
+      return idB.localeCompare(idA, undefined, { numeric: true, sensitivity: 'base' });
     });
 
   const handleDelete = async (app: ApplicationRecord) => {
@@ -153,8 +193,32 @@ export const AdminDashboard: React.FC = () => {
   };
 
   const totalApp = stats?.totalApplications ?? applications.length;
-  const totalInv = stats?.totalInnovation ?? applications.filter((a) => a.applicationType === 'INOVASI').length;
+  const totalInvPensyarah = applications.filter((a) => a.applicationType === 'INOVASI' && a.category === 'PENSYARAH').length;
+  const totalInvPelajar = applications.filter((a) => a.applicationType === 'INOVASI' && a.category === 'PELAJAR').length;
   const totalRes = stats?.totalResearch ?? applications.filter((a) => a.applicationType === 'PENYELIDIKAN').length;
+
+  // Calculate unique users by IC
+  const uniqueUsers = new Map<string, string>(); // icNumber -> institution
+  applications.forEach((app) => {
+    if (app.icNumber) {
+      const inst = (app.institution || '').trim().toUpperCase();
+      uniqueUsers.set(app.icNumber, inst);
+    }
+  });
+
+  let kkbsCount = 0;
+  let luarCount = 0;
+  uniqueUsers.forEach((inst) => {
+    if (inst.includes('BEAUFORT') || inst === 'KKBS' || inst.includes('BEUAFORT') || inst.includes('BOFORT')) {
+      kkbsCount++;
+    } else {
+      luarCount++;
+    }
+  });
+
+  const totalUsers = kkbsCount + luarCount;
+  const kkbsPercent = totalUsers > 0 ? Math.round((kkbsCount / totalUsers) * 100) : 0;
+  const luarPercent = totalUsers > 0 ? 100 - kkbsPercent : 0;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
@@ -196,8 +260,8 @@ export const AdminDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Top 3 KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* Top 4 KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Jumlah Rekod */}
         <button
           onClick={() => {
@@ -205,45 +269,67 @@ export const AdminDashboard: React.FC = () => {
           }}
           className={`text-left p-6 rounded-2xl border transition-all shadow-xs flex items-center justify-between ${
             filterType === 'ALL'
-              ? 'bg-slate-900 text-white border-slate-800 ring-2 ring-red-500/50'
+              ? 'bg-slate-900 text-white border-slate-800 ring-2 ring-slate-500'
               : 'bg-white text-slate-900 border-slate-200 hover:border-slate-300'
           }`}
         >
           <div>
             <div className={`text-[11px] font-bold uppercase tracking-wider ${filterType === 'ALL' ? 'text-slate-300' : 'text-slate-500'}`}>
-              Jumlah Rekod Keseluruhan
+              Jumlah Rekod
             </div>
             <div className={`text-3xl font-extrabold mt-1 font-serif ${filterType === 'ALL' ? 'text-white' : 'text-slate-900'}`}>
               {totalApp}
             </div>
-            {/* Subtext removed */}
           </div>
           <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${filterType === 'ALL' ? 'bg-slate-800 text-red-400' : 'bg-slate-100 text-slate-700'}`}>
             <Layers className="w-6 h-6" />
           </div>
         </button>
 
-        {/* Card 2: Projek Inovasi */}
+        {/* Card 2A: Permohonan Inovasi (Pensyarah) */}
         <button
           onClick={() => {
-            setFilterType('INOVASI');
+            setFilterType('INOVASI_PENSYARAH');
           }}
           className={`text-left p-6 rounded-2xl border transition-all shadow-xs flex items-center justify-between ${
-            filterType === 'INOVASI'
+            filterType === 'INOVASI_PENSYARAH'
               ? 'bg-red-900 text-white border-red-800 ring-2 ring-red-500'
               : 'bg-white text-slate-900 border-slate-200 hover:border-slate-300'
           }`}
         >
           <div>
-            <div className={`text-[11px] font-bold uppercase tracking-wider ${filterType === 'INOVASI' ? 'text-red-200' : 'text-red-600'}`}>
-              Projek Inovasi
+            <div className={`text-[11px] font-bold uppercase tracking-wider ${filterType === 'INOVASI_PENSYARAH' ? 'text-red-200' : 'text-red-600'}`}>
+              Inovasi (Pensyarah)
             </div>
-            <div className={`text-3xl font-extrabold mt-1 font-serif ${filterType === 'INOVASI' ? 'text-white' : 'text-red-700'}`}>
-              {totalInv}
+            <div className={`text-3xl font-extrabold mt-1 font-serif ${filterType === 'INOVASI_PENSYARAH' ? 'text-white' : 'text-red-700'}`}>
+              {totalInvPensyarah}
             </div>
-            {/* Subtext removed */}
           </div>
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${filterType === 'INOVASI' ? 'bg-red-800 text-rose-300' : 'bg-red-50 text-red-600'}`}>
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${filterType === 'INOVASI_PENSYARAH' ? 'bg-red-800 text-rose-300' : 'bg-red-50 text-red-600'}`}>
+            <Sparkles className="w-6 h-6" />
+          </div>
+        </button>
+
+        {/* Card 2B: Permohonan Inovasi (Pelajar) */}
+        <button
+          onClick={() => {
+            setFilterType('INOVASI_PELAJAR');
+          }}
+          className={`text-left p-6 rounded-2xl border transition-all shadow-xs flex items-center justify-between ${
+            filterType === 'INOVASI_PELAJAR'
+              ? 'bg-rose-900 text-white border-rose-800 ring-2 ring-rose-500'
+              : 'bg-white text-slate-900 border-slate-200 hover:border-slate-300'
+          }`}
+        >
+          <div>
+            <div className={`text-[11px] font-bold uppercase tracking-wider ${filterType === 'INOVASI_PELAJAR' ? 'text-rose-200' : 'text-rose-600'}`}>
+              Inovasi (Pelajar)
+            </div>
+            <div className={`text-3xl font-extrabold mt-1 font-serif ${filterType === 'INOVASI_PELAJAR' ? 'text-white' : 'text-rose-700'}`}>
+              {totalInvPelajar}
+            </div>
+          </div>
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${filterType === 'INOVASI_PELAJAR' ? 'bg-rose-800 text-rose-300' : 'bg-rose-50 text-rose-600'}`}>
             <Sparkles className="w-6 h-6" />
           </div>
         </button>
@@ -266,7 +352,6 @@ export const AdminDashboard: React.FC = () => {
             <div className={`text-3xl font-extrabold mt-1 font-serif ${filterType === 'PENYELIDIKAN' ? 'text-white' : 'text-emerald-700'}`}>
               {totalRes}
             </div>
-            {/* Subtext removed */}
           </div>
           <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${filterType === 'PENYELIDIKAN' ? 'bg-emerald-900 text-emerald-300' : 'bg-emerald-50 text-emerald-600'}`}>
             <BookOpen className="w-6 h-6" />
@@ -274,15 +359,15 @@ export const AdminDashboard: React.FC = () => {
         </button>
       </div>
 
-      {/* Perbandingan Rekod Mengikut Jenis (3 Kad Asing dengan Carta Bar Menegak) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Kad 1: Inovasi */}
+      {/* Perbandingan Rekod Mengikut Jenis (4 Kad Asing dengan Carta Bar & Pie) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* Kad 1: Inovasi Pensyarah */}
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-6">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
               <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
                 <Sparkles className="w-4 h-4 text-red-600" />
-                <span>Permohonan Inovasi</span>
+                <span>Permohonan Inovasi Pensyarah</span>
               </h3>
             </div>
             <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-1 rounded-lg border border-red-100">
@@ -294,20 +379,20 @@ export const AdminDashboard: React.FC = () => {
             {/* Vertical Bar Chart Container */}
             <div className="flex items-end justify-around h-44 px-4 bg-slate-50/50 rounded-xl pb-3 border border-slate-100">
               {statsByYear.map((s) => {
-                const heightPercent = s.inovasi > 0 ? Math.max(15, Math.round((s.inovasi / Math.max(...statsByYear.map(sy => sy.inovasi), 1)) * 80)) : 0;
+                const heightPercent = s.inovasiPensyarah > 0 ? Math.max(15, Math.round((s.inovasiPensyarah / Math.max(...statsByYear.map(sy => sy.inovasiPensyarah), 1)) * 80)) : 0;
                 return (
                   <div key={s.year} className="h-full flex flex-col justify-end items-center group w-1/4">
                     {/* Count Label */}
-                    <span className="text-[11px] font-extrabold text-slate-900 mb-1.5 transition-all font-mono">
-                      {s.inovasi}
+                    <span className="text-[11px] font-extrabold text-slate-900 mb-1.5 transition-all font-mono font-bold">
+                      {s.inovasiPensyarah}
                     </span>
                     {/* Vertical Bar */}
                     <div 
                       style={{ height: `${heightPercent}%` }} 
-                      className={`w-12 bg-red-600 rounded-t-md transition-all duration-300 hover:bg-red-500 relative flex items-end justify-center ${s.inovasi > 0 ? 'shadow-md shadow-red-500/10' : 'opacity-20'}`}
+                      className={`w-12 bg-red-600 rounded-t-md transition-all duration-300 hover:bg-red-500 relative flex items-end justify-center ${s.inovasiPensyarah > 0 ? 'shadow-md shadow-red-500/10' : 'opacity-20'}`}
                     >
-                      <div className="absolute -top-9 scale-0 group-hover:scale-100 bg-slate-955 text-white text-[9px] px-2 py-1 rounded transition-all z-10 whitespace-nowrap font-mono shadow-md">
-                        {s.inovasi} Rekod
+                      <div className="absolute -top-9 scale-0 group-hover:scale-100 bg-slate-950 text-white text-[9px] px-2 py-1 rounded transition-all z-10 whitespace-nowrap font-mono shadow-md">
+                        {s.inovasiPensyarah} Rekod
                       </div>
                     </div>
                     {/* Year Label */}
@@ -321,7 +406,52 @@ export const AdminDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Kad 2: Penyelidikan */}
+        {/* Kad 2: Inovasi Pelajar */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-6">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                <Sparkles className="w-4 h-4 text-rose-600" />
+                <span>Permohonan Inovasi Pelajar</span>
+              </h3>
+            </div>
+            <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-1 rounded-lg border border-rose-100">
+              Inovasi
+            </span>
+          </div>
+
+          <div className="relative pt-2">
+            {/* Vertical Bar Chart Container */}
+            <div className="flex items-end justify-around h-44 px-4 bg-slate-50/50 rounded-xl pb-3 border border-slate-100">
+              {statsByYear.map((s) => {
+                const heightPercent = s.inovasiPelajar > 0 ? Math.max(15, Math.round((s.inovasiPelajar / Math.max(...statsByYear.map(sy => sy.inovasiPelajar), 1)) * 80)) : 0;
+                return (
+                  <div key={s.year} className="h-full flex flex-col justify-end items-center group w-1/4">
+                    {/* Count Label */}
+                    <span className="text-[11px] font-extrabold text-slate-900 mb-1.5 transition-all font-mono font-bold">
+                      {s.inovasiPelajar}
+                    </span>
+                    {/* Vertical Bar */}
+                    <div 
+                      style={{ height: `${heightPercent}%` }} 
+                      className={`w-12 bg-rose-600 rounded-t-md transition-all duration-300 hover:bg-rose-500 relative flex items-end justify-center ${s.inovasiPelajar > 0 ? 'shadow-md shadow-rose-500/10' : 'opacity-20'}`}
+                    >
+                      <div className="absolute -top-9 scale-0 group-hover:scale-100 bg-slate-955 text-white text-[9px] px-2 py-1 rounded transition-all z-10 whitespace-nowrap font-mono shadow-md">
+                        {s.inovasiPelajar} Rekod
+                      </div>
+                    </div>
+                    {/* Year Label */}
+                    <span className="text-[11px] font-bold text-slate-600 mt-2.5 font-mono">
+                      {s.year}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Kad 3: Penyelidikan */}
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-6">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
@@ -343,7 +473,7 @@ export const AdminDashboard: React.FC = () => {
                 return (
                   <div key={s.year} className="h-full flex flex-col justify-end items-center group w-1/4">
                     {/* Count Label */}
-                    <span className="text-[11px] font-extrabold text-slate-900 mb-1.5 transition-all font-mono">
+                    <span className="text-[11px] font-extrabold text-slate-900 mb-1.5 transition-all font-mono font-bold">
                       {s.penyelidikan}
                     </span>
                     {/* Vertical Bar */}
@@ -366,85 +496,138 @@ export const AdminDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Kad 3: Usability Feedback (Horizontal Progress Bars Style) */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col justify-between">
-          {(() => {
-            const fbStats = stats?.feedbackStats || { total: 0, s1Avg: 0, s2Avg: 0, s3Avg: 0, s4Avg: 0, s5Avg: 0 };
-            const overallAvg = fbStats.total > 0 
-              ? (fbStats.s1Avg + fbStats.s2Avg + fbStats.s3Avg + fbStats.s4Avg + fbStats.s5Avg) / 5 
-              : 0;
+        {/* Kad 4: Bilangan Pengguna (Pie Chart) */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col justify-between space-y-6">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                <Users className="w-4 h-4 text-indigo-600" />
+                <span>Statistik Pengguna</span>
+              </h3>
+            </div>
+            <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100">
+              Pengguna
+            </span>
+          </div>
 
-            const fbItems = [
-              { 
-                label: 'Antaramuka sistem iREPRO menarik, kemas dan tersusun', 
-                score: fbStats.s1Avg, 
-                colorClass: 'bg-rose-500 shadow-xs shadow-rose-500/10' 
-              },
-              { 
-                label: 'Sistem iREPRO adalah mudah digunakan dan difahami', 
-                score: fbStats.s2Avg, 
-                colorClass: 'bg-orange-500 shadow-xs shadow-orange-500/10' 
-              },
-              { 
-                label: 'Fungsi penjanaan dokumen berjalan dengan lancar', 
-                score: fbStats.s3Avg, 
-                colorClass: 'bg-amber-400 shadow-xs shadow-amber-400/10' 
-              },
-              { 
-                label: 'Membantu menjimatkan masa pengurusan permohonan', 
-                score: fbStats.s4Avg, 
-                colorClass: 'bg-emerald-500 shadow-xs shadow-emerald-500/10' 
-              },
-              { 
-                label: 'Saya berpuas hati dengan kualiti keseluruhan perkhidmatan', 
-                score: fbStats.s5Avg, 
-                colorClass: 'bg-blue-500 shadow-xs shadow-blue-500/10' 
-              }
-            ];
+          <div className="flex flex-col items-center justify-center space-y-4 py-2">
+            {/* Conic-gradient Pie Chart */}
+            <div className="relative">
+              <div 
+                className="w-28 h-28 rounded-full border border-slate-100 shadow-xs transition-transform duration-300 hover:scale-105"
+                style={{
+                  background: `conic-gradient(#ef4444 0% ${kkbsPercent}%, #3b82f6 ${kkbsPercent}% 100%)`
+                }}
+              />
+              <div className="absolute inset-4 rounded-full bg-white flex flex-col items-center justify-center shadow-xs">
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Jumlah</span>
+                <span className="text-lg font-extrabold text-slate-800 font-serif">{totalUsers}</span>
+              </div>
+            </div>
 
-            return (
-              <div className="space-y-5 h-full flex flex-col justify-between">
-                <div className="flex items-start justify-between border-b border-slate-100 pb-3">
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900">
-                      Penilaian Penggunaan iREPRO
-                    </h3>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Purata kriteria penilaian maklum balas ({fbStats.total} responden)
-                    </p>
-                  </div>
-                  <div className="text-red-500 bg-red-50 px-3 py-1 rounded-xl border border-red-100 font-extrabold text-xs sm:text-sm font-mono whitespace-nowrap">
-                    {overallAvg > 0 ? overallAvg.toFixed(2) : '0.00'} / 5.0
-                  </div>
+            {/* Legends */}
+            <div className="w-full text-[11px] space-y-1.5 pt-1">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <span className="w-2.5 h-2.5 rounded bg-red-500 shrink-0" />
+                  <span className="font-semibold text-slate-700">KKBS</span>
                 </div>
+                <span className="font-bold text-slate-900 font-mono">{kkbsCount} ({kkbsPercent}%)</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <span className="w-2.5 h-2.5 rounded bg-blue-500 shrink-0" />
+                  <span className="font-semibold text-slate-700">Luar KKBS</span>
+                </div>
+                <span className="font-bold text-slate-900 font-mono">{luarCount} ({luarPercent}%)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-                <div className="space-y-4 flex-1 flex flex-col justify-center">
-                  {fbItems.map((item, idx) => {
-                    const widthPercent = item.score > 0 ? Math.round((item.score / 5) * 100) : 0;
-                    return (
-                      <div key={idx} className="space-y-1">
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="text-[11px] font-semibold text-slate-700 leading-tight">
-                            {item.label}
-                          </span>
-                          <span className="text-xs font-extrabold text-slate-900 font-mono">
-                            {item.score > 0 ? item.score.toFixed(1) : '0.0'}
-                          </span>
-                        </div>
-                        <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                          <div 
-                            style={{ width: `${widthPercent}%` }} 
-                            className={`h-full rounded-full transition-all duration-500 ${item.colorClass}`}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
+      {/* Penilaian Penggunaan iREPRO (Usability Feedback) - Moved to bottom */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs">
+        {(() => {
+          const fbStats = stats?.feedbackStats || { total: 0, s1Avg: 0, s2Avg: 0, s3Avg: 0, s4Avg: 0, s5Avg: 0 };
+          const overallAvg = fbStats.total > 0 
+            ? (fbStats.s1Avg + fbStats.s2Avg + fbStats.s3Avg + fbStats.s4Avg + fbStats.s5Avg) / 5 
+            : 0;
+
+          const fbItems = [
+            { 
+              label: 'Antaramuka sistem iREPRO menarik, kemas dan tersusun', 
+              score: fbStats.s1Avg, 
+              colorClass: 'bg-rose-500 shadow-xs shadow-rose-500/10' 
+            },
+            { 
+              label: 'Sistem iREPRO adalah mudah digunakan dan difahami', 
+              score: fbStats.s2Avg, 
+              colorClass: 'bg-orange-500 shadow-xs shadow-orange-500/10' 
+            },
+            { 
+              label: 'Fungsi penjanaan dokumen berjalan dengan lancar', 
+              score: fbStats.s3Avg, 
+              colorClass: 'bg-amber-400 shadow-xs shadow-amber-400/10' 
+            },
+            { 
+              label: 'Membantu menjimatkan masa pengurusan permohonan', 
+              score: fbStats.s4Avg, 
+              colorClass: 'bg-emerald-500 shadow-xs shadow-emerald-500/10' 
+            },
+            { 
+              label: 'Saya berpuas hati dengan kualiti keseluruhan perkhidmatan', 
+              score: fbStats.s5Avg, 
+              colorClass: 'bg-blue-500 shadow-xs shadow-blue-500/10' 
+            }
+          ];
+
+          return (
+            <div className="space-y-5">
+              <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Penilaian Penggunaan iREPRO
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Purata kriteria penilaian maklum balas ({fbStats.total} responden)
+                  </p>
+                </div>
+                <div className="text-red-500 bg-red-50 px-3 py-1 rounded-xl border border-red-100 font-extrabold text-xs sm:text-sm font-mono whitespace-nowrap">
+                  {overallAvg > 0 ? overallAvg.toFixed(2) : '0.00'} / 5.0
                 </div>
               </div>
-            );
-          })()}
-        </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+                {fbItems.map((item, idx) => {
+                  const widthPercent = item.score > 0 ? Math.round((item.score / 5) * 100) : 0;
+                  return (
+                    <div key={idx} className="space-y-2 p-3 bg-slate-50/50 rounded-xl border border-slate-100 flex flex-col justify-between">
+                      <span className="text-[11px] font-semibold text-slate-700 leading-tight">
+                        {item.label}
+                      </span>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                            <div 
+                              style={{ width: `${widthPercent}%` }} 
+                              className={`h-full rounded-full transition-all duration-500 ${item.colorClass}`}
+                            />
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[11px] font-extrabold text-slate-900 font-mono">
+                            {item.score > 0 ? item.score.toFixed(1) : '0.0'} / 5.0
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
 
@@ -496,8 +679,9 @@ export const AdminDashboard: React.FC = () => {
                 className="w-full text-xs px-3 py-2.5 bg-white border border-slate-300 rounded-xl"
               >
                 <option value="ALL">Semua Jenis</option>
-                <option value="INOVASI">Inovasi</option>
-                <option value="PENYELIDIKAN">Penyelidikan</option>
+                <option value="INOVASI_PENSYARAH">Permohonan Inovasi (Pensyarah)</option>
+                <option value="INOVASI_PELAJAR">Permohonan Inovasi (Pelajar)</option>
+                <option value="PENYELIDIKAN">Kertas Penyelidikan</option>
               </select>
             </div>
 
@@ -525,12 +709,13 @@ export const AdminDashboard: React.FC = () => {
                 <th className="px-4 py-3.5">Tajuk Permohonan</th>
                 <th className="px-4 py-3.5">Pemohon</th>
                 <th className="px-4 py-3.5 text-center">Tahun</th>
+                <th className="px-4 py-3.5 text-right">Tindakan</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredApps.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-slate-400 text-xs">
+                  <td colSpan={5} className="px-4 py-8 text-center text-slate-400 text-xs">
                     Tiada rekod permohonan ditemui untuk kriteria carian ini.
                   </td>
                 </tr>
@@ -560,6 +745,17 @@ export const AdminDashboard: React.FC = () => {
 
                     <td className="px-4 py-3.5 text-center font-semibold">
                       {app.createdAt ? new Date(app.createdAt).getFullYear() : app.year}
+                    </td>
+
+                    <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                      <button
+                        onClick={() => handleDelete(app)}
+                        className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 transition-all font-semibold text-xs border border-rose-100"
+                        title="Padam Permohonan"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Padam</span>
+                      </button>
                     </td>
                   </tr>
                 ))

@@ -27,6 +27,7 @@ interface AppContextType {
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
   loginUser: (user: UserProfile) => void;
   loginAdmin: () => void;
+  updateCurrentUserProfile: (user: UserProfile) => void;
   logout: () => void;
   refreshData: () => Promise<void>;
   createApplication: (data: any) => Promise<ApplicationRecord>;
@@ -134,6 +135,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     localStorage.removeItem('irepro_user');
     setActiveView('admin_dashboard');
     showToast('Log masuk Pentadbir berjaya.');
+  };
+
+  const updateCurrentUserProfile = (user: UserProfile) => {
+    setCurrentUser(user);
+    localStorage.setItem('irepro_user', JSON.stringify(user));
   };
 
   const logout = () => {
@@ -336,6 +342,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         showToast,
         loginUser,
         loginAdmin,
+        updateCurrentUserProfile,
         logout,
         refreshData,
         createApplication,

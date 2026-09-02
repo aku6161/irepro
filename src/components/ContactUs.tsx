@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 
 export const ContactUs: React.FC = () => {
-  const { showToast } = useApp();
+  const { showToast, currentUser } = useApp();
   
   // Demographics
   const [jantina, setJantina] = useState('Lelaki');
@@ -26,6 +26,12 @@ export const ContactUs: React.FC = () => {
   
   const [comments, setComments] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
+
+  // Dynamic WhatsApp link with custom pre-filled message
+  const developerName = currentUser?.name ? currentUser.name.trim() : 'pengguna iREPRO';
+  const waMessage = `Selamat datang ${developerName}, terima kasih kerana menghubungi pembangun iREPRO. Apa yang boleh kami bantu hari ini?`;
+  const waUrl = `https://wa.me/60122455616?text=${encodeURIComponent(waMessage)}`;
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,7 +116,7 @@ export const ContactUs: React.FC = () => {
               <div>
                 <span className="font-semibold block text-slate-800">Hubungi Kami:</span>
                 <a 
-                  href="https://wa.me/shamsuddin_amin" 
+                  href={waUrl} 
                   target="_blank" 
                   rel="noopener noreferrer" 
                   className="inline-flex items-center space-x-1 text-emerald-600 hover:text-emerald-500 font-bold"

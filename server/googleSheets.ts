@@ -126,7 +126,8 @@ export async function syncAllSheets(): Promise<{ applications: any[]; users: any
 
       if (idx === 0 && (vals[0].toUpperCase().includes('NAMA KETUA') || vals[0].toUpperCase().includes('NAMA'))) return;
       const applicantName = (vals[0] || '').toUpperCase();
-      const title = vals[12] || vals[9] || '';
+      
+      const title = vals[12] || '';
       if (!applicantName && !title) return;
 
       const seq = String(syncedApps.length + 1).padStart(4, '0');
@@ -174,26 +175,55 @@ export async function syncAllSheets(): Promise<{ applications: any[]; users: any
       }
       const m2Inst = vals[8] || institution;
 
+      // Helper: detect if a string is a date/timestamp (not a person's name)
+      const isDateStr = (s: string) => /^\d{2}\/\d{2}\/\d{4}/.test(s) || /^\d{4}-\d{2}-\d{2}/.test(s) || s.startsWith('Date(');
+
+      // Member 3 (at the end: Col 21, 22, 23) — only if val[21] is NOT a date string
+      const raw21 = (vals[21] || '').trim();
+      let m3Name = (!isDateStr(raw21)) ? raw21.toUpperCase() : '';
+      let m3Ic = m3Name ? (vals[22] || '').trim() : '';
+      if ((!m3Ic || m3Ic.length < 5) && m3Name && nameToIcMap.has(m3Name.trim())) {
+        m3Ic = nameToIcMap.get(m3Name.trim())!;
+      }
+      const m3Digits = m3Ic.replace(/\D/g, '');
+      if (m3Digits.length === 12) {
+        m3Ic = `${m3Digits.slice(0, 6)}-${m3Digits.slice(6, 8)}-${m3Digits.slice(8, 12)}`;
+      }
+      const m3Inst = m3Name ? (vals[23] || institution) : institution;
+
       // Admin & Management Names
       const kupikName = vals[9] || 'NORFAZIRAH BINTI KUSIN';
       const deputyDirectorName = vals[10] || 'AZLENAH BTE MOHD SEN';
       const directorName = vals[11] || 'Ts. JULKIFLI BIN AWANG BESAR (A.D.K)';
 
-      const actualTitle = vals[12] || 'PROJEK INOVASI KKBS';
+      const actualTitle = title || 'PROJEK INOVASI KKBS';
 
-      // Parse language dynamically from column 19 (vals[18])
+      // Parse language
       const langVal = (vals[18] || '').trim();
       const language = (langVal.toLowerCase().startsWith('en') || langVal.toLowerCase().includes('english') || langVal.toLowerCase().includes('inggeris')) ? 'EN' : 'MS';
       const langLower = language.toLowerCase();
 
-      const parsedDate = parseSheetDate(vals[21]);
+      // Date: Col Y (24) for new rows, Col V (21) for old rows (where val[21] is a timestamp)
+      let parsedDate = parseSheetDate(vals[24]);
+      if (!parsedDate && isDateStr(raw21)) {
+        parsedDate = parseSheetDate(raw21);
+      }
       const recordYear = parsedDate ? parsedDate.getFullYear() : 2026;
       const recordCreatedAt = parsedDate ? parsedDate.toISOString() : new Date().toISOString();
+
+      const membersArray = [
+        m1Name ? { id: `m-1`, name: m1Name, icNumber: m1Ic, phone: '', department: '', institution: m1Inst } : null,
+        m2Name ? { id: `m-2`, name: m2Name, icNumber: m2Ic, phone: '', department: '', institution: m2Inst } : null,
+        m3Name ? { id: `m-3`, name: m3Name, icNumber: m3Ic, phone: '', department: '', institution: m3Inst } : null,
+      ].filter(Boolean) as any[];
+
+      const category = (membersArray.length === 3) ? 'PELAJAR' : 'PENSYARAH';
 
       const innovationRecord = {
         id: `sheet-inv-${idx + 1}`,
         applicationId: appId,
         applicationType: 'INOVASI',
+        category: category,
         language: language,
         icNumber: chiefIc,
         applicantName: applicantName || 'KETUA INOVASI',
@@ -209,10 +239,7 @@ export async function syncAllSheets(): Promise<{ applications: any[]; users: any
           chiefPhone: '012-3456789',
           chiefEmail: chiefEmail,
           institution: institution,
-          members: [
-            m1Name ? { id: `m-1`, name: m1Name, icNumber: m1Ic, phone: '', department: '', institution: m1Inst } : null,
-            m2Name ? { id: `m-2`, name: m2Name, icNumber: m2Ic, phone: '', department: '', institution: m2Inst } : null,
-          ].filter(Boolean),
+          members: membersArray,
           adminInfo: {
             kupikName: kupikName,
             deputyDirectorName: deputyDirectorName,
@@ -240,7 +267,7 @@ export async function syncAllSheets(): Promise<{ applications: any[]; users: any
             id: `doc-inv-${idx}-2`,
             applicationId: appId,
             documentType: 'Kertas Cadangan Inovasi',
-            templateKey: `innovation_${langLower}_proposal`,
+            templateKey: category === 'PELAJAR' ? `innovation_student_${langLower}_proposal` : `innovation_${langLower}_proposal`,
             language: language,
             fileName: `${appId}_CADANGAN.doc`,
             driveUrl: GOOGLE_DRIVE_FOLDER,
@@ -642,6 +669,7 @@ export function prepareSheetRow(record: any): { targetSheet: string; rowValues: 
     const inv = record.innovationData || {};
     const m1 = inv.members?.[0] || {};
     const m2 = inv.members?.[1] || {};
+    const m3 = inv.members?.[2] || {};
     const admin = inv.adminInfo || {};
     return {
       targetSheet: 'inovasi',
@@ -667,6 +695,9 @@ export function prepareSheetRow(record: any): { targetSheet: string; rowValues: 
         record.language === 'EN' ? 'English' : 'Bahasa Melayu',
         record.email || inv.chiefEmail || '',
         record.applicationId || '',
+        m3.name || '',
+        m3.icNumber || '',
+        m3.institution || '',
         formatDateForSheet(record.createdAt),
       ],
     };
@@ -789,15 +820,18 @@ export async function appendRowToGoogleSheet(targetSheet: string, rowValues: any
             return { success: true, message: `Berjaya disimpan ke Google Sheets (Sheet: ${targetSheet}).` };
           } else {
             console.warn(`[Google Sheets via Apps Script GET] Failed:`, resJson);
+            return { success: false, message: resJson.error || `Gagal menulis ke Google Sheets via Apps Script: ${JSON.stringify(resJson)}` };
           }
         } else {
           console.warn(`[Google Sheets via Apps Script GET] Unexpected response:`, resText.substring(0, 200));
+          return { success: false, message: `Respon tidak dikenali dari Google Apps Script: ${resText.substring(0, 100)}` };
         }
       } catch (err: any) {
         console.error(`[Google Sheets via Apps Script GET] Exception:`, err.message);
+        return { success: false, message: `Exception semasa menulis ke Google Sheets: ${err.message}` };
       }
     }
-    return { success: true, message: `Disimpan ke sistem iREPRO dan sedia diselaraskan ke sheet "${targetSheet}".` };
+    return { success: false, message: `Google Sheets sync URL (APPS_SCRIPT_URL) tidak dikonfigurasikan.` };
   }
 
   try {

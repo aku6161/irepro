@@ -75,9 +75,10 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ editMode = fal
   const [language, setLanguage] = useState<Language>(
     editingApplication?.language || 'MS'
   );
-  const [researchCategory, setResearchCategory] = useState<ResearchCategory>(
-    editingApplication?.category || 'CAT_1'
-  );
+  const [researchCategory, setResearchCategory] = useState<ResearchCategory>(() => {
+    if (editingApplication?.category) return editingApplication.category;
+    return (editingApplication?.applicationType || 'INOVASI') === 'INOVASI' ? 'PENSYARAH' : 'CAT_1';
+  });
 
   // 2. Step 2: Applicant / Chief Details
   const [chiefName, setChiefName] = useState<string>(
@@ -239,10 +240,12 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ editMode = fal
     setChiefIc(formatIcNumber(e.target.value));
   };
 
-  // Add / Remove Member (Maximum 2 members)
+  // Add / Remove Member (Maximum 2/3 members)
+  const maxMembers = (appType === 'INOVASI' && researchCategory === 'PELAJAR') ? 3 : 2;
+
   const addMember = () => {
-    if (members.length >= 2) {
-      showToast('Maksimum hanya 2 orang ahli tambahan dibenarkan.', 'info');
+    if (members.length >= maxMembers) {
+      showToast(`Maksimum hanya ${maxMembers} orang ahli tambahan dibenarkan.`, 'info');
       return;
     }
     const newIdx = members.length + 1;
@@ -609,14 +612,14 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ editMode = fal
                       name="appType"
                       value="INOVASI"
                       checked={appType === 'INOVASI'}
-                      onChange={() => setAppType('INOVASI')}
+                      onChange={() => {
+                        setAppType('INOVASI');
+                        setResearchCategory('PENSYARAH');
+                      }}
                       className="mt-1 text-red-600 focus:ring-red-500"
                     />
                     <div className="ml-3">
                       <span className="font-bold text-sm text-slate-900 block">1. INOVASI</span>
-                      <p className="text-xs text-slate-500 mt-1">
-                        Pembangunan produk, proses, prototaip teknologi atau kaedah pengajaran baharu TVET.
-                      </p>
                     </div>
                   </label>
 
@@ -633,18 +636,64 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ editMode = fal
                       name="appType"
                       value="PENYELIDIKAN"
                       checked={appType === 'PENYELIDIKAN'}
-                      onChange={() => setAppType('PENYELIDIKAN')}
+                      onChange={() => {
+                        setAppType('PENYELIDIKAN');
+                        setResearchCategory('CAT_1');
+                      }}
                       className="mt-1 text-emerald-600 focus:ring-emerald-500"
                     />
                     <div className="ml-3">
                       <span className="font-bold text-sm text-slate-900 block">2. PENYELIDIKAN</span>
-                      <p className="text-xs text-slate-500 mt-1">
-                        Kajian empirikal, kajian tindakan, atau penyelidikan institusi mengikut Kategori I hingga V.
-                      </p>
                     </div>
                   </label>
                 </div>
               </div>
+
+              {/* Inovasi Category Selection */}
+              {appType === 'INOVASI' && (
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3 animate-in fade-in duration-150">
+                  <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider">
+                    Pilih Kategori Inovasi <span className="text-rose-500">*</span>
+                  </label>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {[
+                      {
+                        cat: 'PENSYARAH' as ResearchCategory,
+                        label: 'Kategori Pensyarah',
+                        desc: 'Maksimum 2 ahli tambahan.',
+                      },
+                      {
+                        cat: 'PELAJAR' as ResearchCategory,
+                        label: 'Kategori Pelajar',
+                        desc: 'Maksimum 3 ahli pelajar.',
+                      },
+                    ].map((item) => (
+                      <label
+                        key={item.cat}
+                        className={`flex items-start p-3 rounded-lg border text-xs cursor-pointer transition-colors ${
+                          researchCategory === item.cat
+                            ? 'bg-red-50 border-red-600 text-red-950 font-semibold'
+                            : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="innovationCategory"
+                          value={item.cat}
+                          checked={researchCategory === item.cat}
+                          onChange={() => setResearchCategory(item.cat)}
+                          className="mt-0.5 text-red-600 focus:ring-red-500"
+                        />
+                        <div className="ml-2.5">
+                          <span className="font-bold text-slate-900 block">{item.label}</span>
+                          <span className="text-[11px] text-slate-500 font-normal mt-1 block">{item.desc}</span>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Penyelidikan Category Selection */}
               {appType === 'PENYELIDIKAN' && (
@@ -933,9 +982,9 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ editMode = fal
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                    Senarai Ahli Projek (Maksimum 2 Orang - {members.length}/2)
+                    Senarai Ahli Projek (Maksimum {maxMembers} Orang - {members.length}/{maxMembers})
                   </label>
-                  {members.length < 2 && (
+                  {members.length < maxMembers && (
                     <button
                       type="button"
                       onClick={addMember}
@@ -1001,31 +1050,35 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ editMode = fal
                             <p className="text-[10px] text-slate-400 mt-0.5">Format: 000000-00-0000</p>
                           </div>
 
-                          <div>
-                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                              No. Telefon
-                            </label>
-                            <input
-                              type="text"
-                              value={member.phone}
-                              onChange={(e) => updateMemberField(idx, 'phone', e.target.value)}
-                              placeholder="01X-XXXXXXX"
-                              className="w-full text-xs px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500"
-                            />
-                          </div>
+                          {appType !== 'INOVASI' && (
+                            <>
+                              <div>
+                                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                                  No. Telefon
+                                </label>
+                                <input
+                                  type="text"
+                                  value={member.phone}
+                                  onChange={(e) => updateMemberField(idx, 'phone', e.target.value)}
+                                  placeholder="01X-XXXXXXX"
+                                  className="w-full text-xs px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500"
+                                />
+                              </div>
 
-                          <div>
-                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                              Jabatan Ahli
-                            </label>
-                            <input
-                              type="text"
-                              value={member.department}
-                              onChange={(e) => updateMemberField(idx, 'department', e.target.value.toUpperCase())}
-                              placeholder="Unit Teknologi Elektrik"
-                              className="w-full text-xs uppercase px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500"
-                            />
-                          </div>
+                              <div>
+                                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                                  Jabatan Ahli
+                                </label>
+                                <input
+                                  type="text"
+                                  value={member.department}
+                                  onChange={(e) => updateMemberField(idx, 'department', e.target.value.toUpperCase())}
+                                  placeholder="Unit Teknologi Elektrik"
+                                  className="w-full text-xs uppercase px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500"
+                                />
+                              </div>
+                            </>
+                          )}
 
                           <div>
                             <label className="block text-[11px] font-semibold text-slate-600 mb-1">
@@ -1128,9 +1181,12 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({ editMode = fal
                 <input
                   type="text"
                   value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setTitle(appType === 'INOVASI' ? val.toUpperCase() : val);
+                  }}
                   placeholder="Sistem Pemantauan Pintar IoT Kualiti Udara Makmal..."
-                  className="w-full text-xs font-semibold px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-red-500 text-slate-900"
+                  className={`w-full text-xs font-semibold px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-red-500 text-slate-900 ${appType === 'INOVASI' ? 'uppercase' : ''}`}
                 />
               </div>
 

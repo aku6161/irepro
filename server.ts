@@ -3,6 +3,9 @@ import path from 'path';
 import fs from 'fs';
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
+import dotenv from 'dotenv';
+import { createClient } from '@supabase/supabase-js';
+import ws from 'ws';
 import {
   GOOGLE_SPREADSHEET_ID,
   GOOGLE_DRIVE_FOLDER,
@@ -12,7 +15,27 @@ import {
   appendRowToGoogleSheet,
   formatIc,
   formatDateForSheet,
+  parseSheetDate,
 } from './server/googleSheets.js';
+
+// Load env variables
+dotenv.config({ path: '.env.local' });
+dotenv.config();
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error('CRITICAL: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are not configured.');
+  process.exit(1);
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: { persistSession: false },
+  realtime: {
+    transport: ws,
+  },
+});
 
 const app = express();
 const PORT = 3000;
@@ -58,7 +81,7 @@ interface StoredApplication {
 interface AuditLog {
   id: string;
   user: string;
-  action: 'Login' | 'Pendaftaran' | 'Create application' | 'Update application' | 'Generate document' | 'Delete application' | 'Admin action';
+  action: 'Login' | 'Pendaftaran' | 'Create application' | 'Update application' | 'Generate document' | 'Delete application' | 'Admin action' | 'Backup';
   applicationId?: string;
   details?: string;
   timestamp: string;
@@ -474,56 +497,71 @@ let db = {
   feedback: [] as Feedback[],
 };
 
-let lastSyncTime = new Date().toISOString();
-let isSyncing = false;
+let lastSyncTime = '1970-01-01T00:00:00.000Z';
+let activeSyncPromise: Promise<boolean> | null = null;
 let initialSyncPromise: Promise<boolean> | null = null;
 let isInitialSyncDone = false;
 
-// Function to refresh database with live data from Google Sheets
-async function refreshFromGoogleSheets(): Promise<boolean> {
-  if (isSyncing) return false;
-  isSyncing = true;
-  try {
-    const { applications, users, feedbacks } = await syncAllSheets();
-    if (feedbacks && feedbacks.length > 0) {
-      db.feedback = feedbacks;
-    }
-    if (applications.length > 0) {
-      db.applications = applications;
-      // Merge users so registered users remain available
-      const existingUserMap = new Map(db.users.map((u) => [u.icNumber, u]));
-      users.forEach((u) => {
-        if (!existingUserMap.has(u.icNumber)) {
-          existingUserMap.set(u.icNumber, u);
-        }
-      });
-      db.users = Array.from(existingUserMap.values());
+// Function to refresh database with live data from Supabase
+async function refreshFromSupabase(): Promise<boolean> {
+  if (activeSyncPromise) {
+    return activeSyncPromise;
+  }
+
+  activeSyncPromise = (async () => {
+    try {
+      const { data: users, error: userError } = await supabase.from('users').select('*');
+      if (userError) throw userError;
+
+      const { data: applications, error: appError } = await supabase.from('applications').select('*');
+      if (appError) throw appError;
+
+      const { data: feedbacks, error: fbError } = await supabase.from('feedback').select('*');
+      if (fbError) throw fbError;
+
+      const { data: auditLogs, error: logError } = await supabase.from('audit_logs').select('*');
+      if (logError) throw logError;
+
+      db.users = users || [];
+      db.applications = (applications || []).map(a => ({
+        ...a,
+        generatedDocuments: a.generatedDocuments || [],
+        innovationData: a.innovationData || null,
+        researchData: a.researchData || null
+      }));
+      db.feedback = feedbacks || [];
+      db.auditLogs = auditLogs || [];
+
       lastSyncTime = new Date().toISOString();
-      console.log(`[iREPRO Server] Successfully synced ${applications.length} applications and ${feedbacks ? feedbacks.length : 0} feedbacks from Google Sheets!`);
+      console.log(`[iREPRO Server] Successfully synced cache from Supabase! Users: ${db.users.length}, Apps: ${db.applications.length}, Feedback: ${db.feedback.length}`);
       isInitialSyncDone = true;
       return true;
+    } catch (err: any) {
+      console.error('[iREPRO Server] Error during Supabase sync:', err);
+      return false;
+    } finally {
+      activeSyncPromise = null;
     }
-  } catch (err: any) {
-    console.error('[iREPRO Server] Error during Google Sheets sync:', err);
-  } finally {
-    isSyncing = false;
-  }
-  return false;
+  })();
+
+  return activeSyncPromise;
 }
 
 // Initial sync on server start
-initialSyncPromise = refreshFromGoogleSheets();
+initialSyncPromise = refreshFromSupabase();
 
-// Middleware to ensure initial sync is completed and check cache TTL
 const ensureSyncedMiddleware = async (req: any, res: any, next: any) => {
-  if (!isInitialSyncDone && initialSyncPromise) {
-    await initialSyncPromise;
-  }
-  if (req.method === 'GET' && req.path.startsWith('/api/')) {
+  if (req.path.startsWith('/api/') && req.path !== '/api/health') {
     const now = Date.now();
     const lastSyncMs = new Date(lastSyncTime).getTime();
-    if (now - lastSyncMs > 30000) {
-      refreshFromGoogleSheets().catch(err => console.error('[iREPRO Server] Background sync error:', err));
+    
+    // Trigger refresh only if the cache is older than 10 seconds or initial sync is not complete
+    if (now - lastSyncMs > 10000 || !isInitialSyncDone) {
+      try {
+        await refreshFromSupabase();
+      } catch (err) {
+        console.error('[iREPRO Server] ensureSyncedMiddleware error:', err);
+      }
     }
   }
   next();
@@ -532,7 +570,7 @@ const ensureSyncedMiddleware = async (req: any, res: any, next: any) => {
 app.use(ensureSyncedMiddleware);
 
 function saveDb() {
-  // Primary persistence is Google Sheets. In-memory state acts as fast cache.
+  // Persistence is handled by Supabase
 }
 
 function addAuditLog(user: string, action: AuditLog['action'], applicationId?: string, details?: string) {
@@ -545,6 +583,18 @@ function addAuditLog(user: string, action: AuditLog['action'], applicationId?: s
     timestamp: new Date().toISOString(),
   };
   db.auditLogs.unshift(newLog);
+
+  // Write to Supabase asynchronously in the background
+  supabase.from('audit_logs').insert({
+    id: newLog.id,
+    user: newLog.user,
+    action: newLog.action,
+    applicationId: newLog.applicationId || null,
+    details: newLog.details || null,
+    timestamp: newLog.timestamp
+  }).then(({ error }) => {
+    if (error) console.error('[Supabase] Failed to write audit log:', error);
+  });
 }
 
 // Generate unique sequential Application ID (Unified global format: iREPRO-00026, iREPRO-00027, etc.)
@@ -574,116 +624,38 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', system: 'iREPRO API Engine', time: new Date().toISOString() });
 });
 
-// 2. User Authentication (IC Number login)
-app.post('/api/auth/user-login', (req, res) => {
-  const { icNumber, name, phone, email, institution, department, rawDigits } = req.body;
-  if (!icNumber && !rawDigits) {
-    return res.status(400).json({ error: 'No. Kad Pengenalan diperlukan.' });
+// 2. User Authentication (Email login)
+app.post('/api/auth/user-login', async (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    return res.status(400).json({ error: 'Alamat emel diperlukan.' });
   }
 
-  const raw = String(icNumber || rawDigits || '').trim();
-  const digits = raw.replace(/\D/g, '');
+  const cleanEmail = String(email).trim().toLowerCase();
   
-  if (digits.length !== 12 && !/^\d{6}-\d{2}-\d{4}$/.test(raw)) {
-    return res.status(400).json({ error: 'Sila masukkan 12 digit No. Kad Pengenalan yang sah (contoh: 880512-10-5431).' });
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(cleanEmail)) {
+    return res.status(400).json({ error: 'Sila masukkan alamat emel yang sah (contoh: pengguna@test.com).' });
   }
-
-  const cleanIc = digits.length === 12
-    ? `${digits.slice(0, 6)}-${digits.slice(6, 8)}-${digits.slice(8, 12)}`
-    : raw;
 
   const existingUser = db.users.find(
-    (u) => u.icNumber === cleanIc || (digits && u.icNumber.replace(/\D/g, '') === digits)
+    (u) => u.email && u.email.trim().toLowerCase() === cleanEmail
   );
 
-  const existingApp = db.applications.find((a) => {
-    const aIc = a.icNumber?.replace(/\D/g, '');
-    const chiefInvIc = a.innovationData?.chiefIc?.replace(/\D/g, '');
-    const chiefResIc = a.researchData?.chiefIc?.replace(/\D/g, '');
-    const memberInvMatch = a.innovationData?.members?.some((m: any) => m.icNumber?.replace(/\D/g, '') === digits);
-    const memberResMatch = a.researchData?.members?.some((m: any) => m.icNumber?.replace(/\D/g, '') === digits);
-
-    return (
-      a.icNumber === cleanIc ||
-      (digits && aIc === digits) ||
-      (digits && chiefInvIc === digits) ||
-      (digits && chiefResIc === digits) ||
-      memberInvMatch ||
-      memberResMatch
-    );
-  });
-
-  if (existingUser || existingApp) {
-    let derivedName = existingApp?.applicantName?.toUpperCase() || `PENGGUNA ${cleanIc.slice(0, 6)}`;
-    if (existingApp?.innovationData?.members) {
-      const matchedMember = existingApp.innovationData.members.find((m: any) => m.icNumber?.replace(/\D/g, '') === digits || m.icNumber === cleanIc);
-      if (matchedMember?.name) {
-        derivedName = matchedMember.name.toUpperCase();
-      }
-    }
-    if (existingApp?.researchData?.members) {
-      const matchedMember = existingApp.researchData.members.find((m: any) => m.icNumber?.replace(/\D/g, '') === digits || m.icNumber === cleanIc);
-      if (matchedMember?.name) {
-        derivedName = matchedMember.name.toUpperCase();
-      }
-    }
-
-    const userObj = existingUser || {
-      id: `usr-${Date.now()}`,
-      icNumber: cleanIc,
-      name: derivedName,
-      phone: existingApp?.innovationData?.chiefPhone || existingApp?.researchData?.chiefPhone || '',
-      email: existingApp?.innovationData?.chiefEmail || existingApp?.researchData?.chiefEmail || '',
-      institution: existingApp?.institution || 'Kolej Komuniti Beaufort',
-      department: existingApp?.researchData?.department || '',
-      createdAt: new Date().toISOString(),
-    };
-
-    if (!existingUser) {
-      db.users.push(userObj);
-      saveDb();
-    }
-
+  if (existingUser) {
     addAuditLog(
-      `${cleanIc} (${userObj.name})`,
+      `${existingUser.icNumber || 'TIADA-IC'} (${existingUser.name})`,
       'Login',
       undefined,
-      'Pengguna log masuk ke Dashboard'
+      'Pengguna log masuk ke Dashboard (Emel)'
     );
 
     return res.json({
       exists: true,
-      user: userObj,
-    });
-  } else if (name && name.trim()) {
-    // Registering new user profile
-    const newUser: StoredUser = {
-      id: `usr-${Date.now()}`,
-      icNumber: cleanIc,
-      name: name.trim().toUpperCase(),
-      phone: phone?.trim() || '',
-      email: email?.trim() || '',
-      institution: institution?.trim() || 'Kolej Komuniti Beaufort',
-      department: department?.trim() || '',
-      createdAt: new Date().toISOString(),
-    };
-    db.users.push(newUser);
-    saveDb();
-
-    addAuditLog(
-      `${cleanIc} (${newUser.name})`,
-      'Pendaftaran',
-      undefined,
-      'Pendaftaran pengguna baharu berjaya'
-    );
-
-    return res.json({
-      exists: true,
-      isNew: true,
-      user: newUser,
+      user: existingUser,
     });
   } else {
-    // User does not exist, prompt registration
+    // User does not exist in users database, prompt registration (Step 2)
     return res.json({
       exists: false,
     });
@@ -691,8 +663,8 @@ app.post('/api/auth/user-login', (req, res) => {
 });
 
 // Explicit registration endpoint
-app.post('/api/auth/register-user', (req, res) => {
-  const { icNumber, name, phone, email, institution, department } = req.body;
+app.post('/api/auth/register-user', async (req, res) => {
+  const { icNumber, name, phone, email, institution, department, overwrite } = req.body;
   if (!icNumber || !name) {
     return res.status(400).json({ error: 'No. Kad Pengenalan dan Nama Penuh diperlukan.' });
   }
@@ -708,12 +680,38 @@ app.post('/api/auth/register-user', (req, res) => {
   );
 
   if (existing) {
+    const existingEmail = (existing.email || '').trim().toLowerCase();
+    const newEmail = String(email || '').trim().toLowerCase();
+    
+    if (existingEmail !== newEmail) {
+      if (!overwrite) {
+        return res.status(409).json({
+          error: 'DUPLICATE_IC',
+          message: 'No Kad Pengenalan anda telah wujud, adakah anda pasti untuk mengemaskini emel baharu anda?'
+        });
+      }
+    }
+
+    // Update details
     existing.name = name.trim().toUpperCase();
     if (phone) existing.phone = phone.trim();
     if (email) existing.email = email.trim();
-    if (institution) existing.institution = institution.trim();
+    if (institution) existing.institution = institution.trim().toUpperCase();
     if (department) existing.department = department.trim();
-    saveDb();
+    
+    const { error: updateError } = await supabase.from('users').upsert(existing, { onConflict: 'icNumber' });
+    if (updateError) {
+      console.error('[Supabase] Error updating user:', updateError);
+      return res.status(500).json({ error: 'Gagal mengemaskini pengguna di database.' });
+    }
+    
+    addAuditLog(
+      `${cleanIc} (${existing.name})`,
+      'Pendaftaran',
+      undefined,
+      `Kemaskini emel & maklumat pengguna sedia ada (Emel baru: ${existing.email})`
+    );
+
     return res.json({ success: true, user: existing });
   }
 
@@ -723,13 +721,18 @@ app.post('/api/auth/register-user', (req, res) => {
     name: name.trim().toUpperCase(),
     phone: phone?.trim() || '',
     email: email?.trim() || '',
-    institution: institution?.trim() || 'Kolej Komuniti Beaufort',
+    institution: institution?.trim().toUpperCase() || 'KOLEJ KOMUNITI BEAUFORT',
     department: department?.trim() || '',
     createdAt: new Date().toISOString(),
   };
 
   db.users.push(newUser);
-  saveDb();
+  
+  const { error: insertError } = await supabase.from('users').insert(newUser);
+  if (insertError) {
+    console.error('[Supabase] Error registering user:', insertError);
+    return res.status(500).json({ error: 'Gagal mendaftar pengguna ke database.' });
+  }
 
   addAuditLog(
     `${cleanIc} (${newUser.name})`,
@@ -761,23 +764,53 @@ app.post('/api/auth/admin-login', (req, res) => {
   });
 });
 
+// Explicit user profile update endpoint
+app.put('/api/auth/update-profile', async (req, res) => {
+  const { id, name, phone, institution } = req.body;
+  if (!id) {
+    return res.status(400).json({ error: 'ID Pengguna diperlukan.' });
+  }
+
+  const existing = db.users.find((u) => u.id === id);
+  if (!existing) {
+    return res.status(404).json({ error: 'Pengguna tidak ditemui.' });
+  }
+
+  // Update details
+  if (name) existing.name = name.trim().toUpperCase();
+  if (phone) existing.phone = phone.trim();
+  if (institution) existing.institution = institution.trim().toUpperCase();
+
+  const { error: updateError } = await supabase
+    .from('users')
+    .upsert(existing, { onConflict: 'icNumber' });
+
+  if (updateError) {
+    console.error('[Supabase] Error updating user profile:', updateError);
+    return res.status(500).json({ error: 'Gagal mengemaskini profil di database.' });
+  }
+
+  addAuditLog(
+    `${existing.icNumber} (${existing.name})`,
+    'Update application',
+    undefined,
+    'Kemaskini maklumat profil pengguna'
+  );
+
+  return res.json({ success: true, user: existing });
+});
+
 // 4. Get Applications list (Search, Filter, Role-based)
 app.get('/api/applications', async (req, res) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.set('Pragma', 'no-cache');
   const { icNumber, search, type, category, year, language, limit, page } = req.query;
 
-  // On Vercel (serverless), db resets each invocation — always sync fresh from Google Sheets
+  // On Vercel (serverless), db resets each invocation — always sync fresh from Supabase
   try {
-    const { applications: freshApps, users: freshUsers } = await syncAllSheets();
-    if (freshApps.length > 0) {
-      db.applications = freshApps;
-      const existingUserMap = new Map(db.users.map((u) => [u.icNumber, u]));
-      freshUsers.forEach((u) => { if (!existingUserMap.has(u.icNumber)) existingUserMap.set(u.icNumber, u); });
-      db.users = Array.from(existingUserMap.values());
-    }
+    await refreshFromSupabase();
   } catch (err) {
-    console.warn('[iREPRO] Could not refresh from Sheets, using cached data:', err);
+    console.warn('[iREPRO] Could not refresh from Supabase, using cached data:', err);
   }
 
   // Ensure year is always derived from createdAt
@@ -835,7 +868,29 @@ app.get('/api/applications', async (req, res) => {
   }
 
   // Sort latest first
-  list.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  list.sort((a: any, b: any) => {
+    const parseDate = (dStr: any) => {
+      if (!dStr) return 0;
+      const d = new Date(dStr);
+      if (!isNaN(d.getTime())) return d.getTime();
+      const parts = String(dStr).split(/[\/\-\s:]/);
+      if (parts.length >= 3) {
+        const day = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1;
+        const year = parseInt(parts[2], 10);
+        const hours = parts[3] ? parseInt(parts[3], 10) : 0;
+        const minutes = parts[4] ? parseInt(parts[4], 10) : 0;
+        const seconds = parts[5] ? parseInt(parts[5], 10) : 0;
+        const pd = new Date(year, month, day, hours, minutes, seconds);
+        if (!isNaN(pd.getTime())) return pd.getTime();
+      }
+      return 0;
+    };
+    const dateA = parseDate(a.createdAt);
+    const dateB = parseDate(b.createdAt);
+    if (dateB !== dateA) return dateB - dateA;
+    return (b.applicationId || '').localeCompare(a.applicationId || '', undefined, { numeric: true, sensitivity: 'base' });
+  });
 
   const total = list.length;
   const p = Number(page) || 1;
@@ -909,13 +964,67 @@ app.post('/api/applications', async (req, res) => {
     const authHeader = req.headers.authorization;
     const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : undefined;
 
-    const sheetResult = await appendRowToGoogleSheet(targetSheet, rowValues, bearerToken);
+    // 1. Write to Supabase first
+    const { error: appError } = await supabase.from('applications').insert({
+      id: newRecord.id,
+      applicationId: newRecord.applicationId,
+      applicationType: newRecord.applicationType,
+      category: newRecord.category || null,
+      language: newRecord.language,
+      icNumber: newRecord.icNumber,
+      applicantName: newRecord.applicantName,
+      email: newRecord.email,
+      institution: newRecord.institution,
+      title: newRecord.title,
+      year: newRecord.year,
+      status: newRecord.status,
+      sourceSheet: newRecord.sourceSheet,
+      sheetRowIndex: null, // Updated after sync
+      innovationData: newRecord.innovationData || null,
+      researchData: newRecord.researchData || null,
+      generatedDocuments: newRecord.generatedDocuments,
+      driveUrl: newRecord.driveUrl,
+      createdAt: newRecord.createdAt,
+      updatedAt: newRecord.updatedAt
+    });
+
+    if (appError) {
+      console.error('[Supabase] Failed to save application:', appError);
+      return res.status(500).json({ error: `Gagal menyimpan permohonan ke database: ${appError.message}` });
+    }
 
     db.applications.unshift(newRecord);
 
-    // Refresh memory cache from Google Sheets immediately to fetch sheetRowIndex
-    await refreshFromGoogleSheets();
-    const syncedRecord = db.applications.find(a => a.applicationId === appId) || newRecord;
+    // 2. Perform background sync to Google Sheets
+    (async () => {
+      try {
+        console.log(`[Google Sheets Background Sync] Syncing ${appId} to sheet "${targetSheet}"...`);
+        const sheetResult = await appendRowToGoogleSheet(targetSheet, rowValues, bearerToken);
+        if (sheetResult.success) {
+          console.log(`[Google Sheets Background Sync] Appended row to "${targetSheet}" successfully!`);
+          
+          // Re-pull from sheets to find the correct row index
+          const { applications: freshApps } = await syncAllSheets();
+          const syncedApp = freshApps.find(a => a.applicationId === appId);
+          if (syncedApp && syncedApp.sheetRowIndex !== undefined) {
+            await supabase.from('applications').update({
+              sheetRowIndex: syncedApp.sheetRowIndex
+            }).eq('applicationId', appId);
+            
+            // Also update local cache
+            const cacheApp = db.applications.find(a => a.applicationId === appId);
+            if (cacheApp) cacheApp.sheetRowIndex = syncedApp.sheetRowIndex;
+            console.log(`[Google Sheets Background Sync] Updated sheetRowIndex ${syncedApp.sheetRowIndex} for ${appId} in database.`);
+          }
+        } else {
+          console.warn(`[Google Sheets Background Sync] Failed to append row to "${targetSheet}":`, sheetResult.message);
+        }
+      } catch (err: any) {
+        console.error(`[Google Sheets Background Sync] Error during sync:`, err.message);
+      }
+    })();
+
+    const syncedRecord = newRecord;
 
     addAuditLog(
       `${newRecord.icNumber} (${newRecord.applicantName})`,
@@ -935,12 +1044,75 @@ app.post('/api/applications', async (req, res) => {
       success: true,
       application: syncedRecord,
       targetSheet,
-      googleSheetsSynced: sheetResult.success,
-      sheetMessage: sheetResult.message,
+      googleSheetsSynced: false,
+      sheetMessage: 'Penyelarasan Google Sheets sedang diproses di latar belakang.',
     });
   } catch (err: any) {
     console.error('Error creating application:', err);
     res.status(500).json({ error: 'Maaf, permohonan tidak dapat diproses. Sila cuba lagi.' });
+  }
+});
+
+app.get('/api/sheets/pending-sync', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('applications')
+      .select('*')
+      .is('sheetRowIndex', null);
+
+    if (error) throw error;
+    res.json({ pendingCount: data?.length || 0, pending: data || [] });
+  } catch (err: any) {
+    res.status(500).json({ error: `Gagal menyemak rekod belum diselaraskan: ${err.message}` });
+  }
+});
+
+app.post('/api/sheets/sync-all', async (req, res) => {
+  try {
+    const { data: pending, error } = await supabase
+      .from('applications')
+      .select('*')
+      .is('sheetRowIndex', null);
+
+    if (error) throw error;
+    if (!pending || pending.length === 0) {
+      return res.json({ success: true, message: 'Semua rekod sudah diselaraskan ke Google Sheets.' });
+    }
+
+    console.log(`[iREPRO Sync All] Found ${pending.length} pending records to sync to Google Sheets.`);
+    let successCount = 0;
+    const authHeader = req.headers.authorization;
+    const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : undefined;
+
+    // Push each record
+    for (const record of pending) {
+      try {
+        const { targetSheet, rowValues } = prepareSheetRow(record);
+        const result = await appendRowToGoogleSheet(targetSheet, rowValues, bearerToken);
+        if (result.success) {
+          successCount++;
+        }
+      } catch (e: any) {
+        console.error(`[iREPRO Sync All] Error syncing record ${record.applicationId}:`, e.message);
+      }
+    }
+
+    // Refresh row indices after push
+    const { applications: freshApps } = await syncAllSheets();
+    for (const app of freshApps) {
+      await supabase.from('applications').update({
+        sheetRowIndex: app.sheetRowIndex
+      }).eq('applicationId', app.applicationId);
+    }
+
+    await refreshFromSupabase();
+
+    res.json({
+      success: true,
+      message: `Berjaya menyelaras ${successCount} daripada ${pending.length} rekod ke Google Sheets.`
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: `Ralat semasa menyelaraskan semua rekod: ${err.message}` });
   }
 });
 
@@ -963,14 +1135,114 @@ app.get('/api/sheets/config', (req, res) => {
 
 app.post('/api/sheets/pull', async (req, res) => {
   try {
-    const success = await refreshFromGoogleSheets();
+    console.log('[iREPRO Server] Force pulling from Google Sheets...');
+    const { applications, users, feedbacks } = await syncAllSheets();
+    
+    // 1. Upsert users
+    if (users.length > 0) {
+      const uniqueUsersMap = new Map<string, any>();
+      
+      // Fetch current users from Supabase to prevent overwriting their registered emails/phones
+      const { data: dbUsers } = await supabase.from('users').select('*');
+      const dbUsersMap = new Map((dbUsers || []).map(u => [u.icNumber, u]));
+
+      users.forEach((u: any) => {
+        const existingDbUser = dbUsersMap.get(u.icNumber);
+        
+        // Preserve registered fields
+        const finalEmail = existingDbUser?.email || u.email || '';
+        const finalPhone = existingDbUser?.phone || u.phone || '';
+        const finalName = existingDbUser?.name || u.name;
+        const finalInstitution = existingDbUser?.institution || u.institution || 'Kolej Komuniti Beaufort';
+        const finalDepartment = existingDbUser?.department || u.department || '';
+
+        uniqueUsersMap.set(u.icNumber, {
+          id: existingDbUser?.id || u.id || `usr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          icNumber: u.icNumber,
+          name: finalName,
+          phone: finalPhone,
+          email: finalEmail,
+          institution: finalInstitution,
+          department: finalDepartment,
+          createdAt: existingDbUser?.createdAt || u.createdAt || new Date().toISOString()
+        });
+      });
+      await supabase.from('users').upsert(Array.from(uniqueUsersMap.values()), { onConflict: 'icNumber' });
+    }
+
+    // 2. Upsert applications — but skip any that have been deleted
+    if (applications.length > 0) {
+      // Fetch list of deleted applicationIds to exclude from sync
+      const { data: deletedRecords } = await supabase
+        .from('deleted_applications')
+        .select('applicationId');
+      const deletedIds = new Set((deletedRecords || []).map((d: any) => d.applicationId));
+      
+      const appsToInsert = applications
+        .filter((a: any) => !deletedIds.has(a.applicationId)) // skip deleted ones
+        .map((a: any) => ({
+          id: a.id || `app-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          applicationId: a.applicationId,
+          applicationType: a.applicationType,
+          category: a.category || null,
+          language: a.language || 'MS',
+          icNumber: a.icNumber,
+          applicantName: a.applicantName,
+          email: a.email || '',
+          institution: a.institution || '',
+          title: a.title,
+          year: Number(a.year) || new Date().getFullYear(),
+          status: a.status || 'COMPLETED',
+          sourceSheet: a.sourceSheet || null,
+          sheetRowIndex: a.sheetRowIndex !== undefined && a.sheetRowIndex !== null ? Number(a.sheetRowIndex) : null,
+          innovationData: a.innovationData || null,
+          researchData: a.researchData || null,
+          generatedDocuments: a.generatedDocuments || [],
+          driveUrl: a.driveUrl || '',
+          createdAt: a.createdAt || new Date().toISOString(),
+          updatedAt: a.updatedAt || new Date().toISOString()
+        }));
+      if (appsToInsert.length > 0) {
+        await supabase.from('applications').upsert(appsToInsert, { onConflict: 'id' });
+      }
+      if (deletedIds.size > 0) {
+        console.log(`[Sync] Skipped ${deletedIds.size} deleted records:`, [...deletedIds]);
+      }
+    }
+
+    // 3. Upsert feedback
+    if (feedbacks.length > 0) {
+      const feedbackToInsert = feedbacks.map((f: any, idx: number) => {
+        const parsedDate = parseSheetDate(f.createdAt);
+        const createdAt = parsedDate ? parsedDate.toISOString() : new Date().toISOString();
+        return {
+          id: f.id || `fb-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+          jantina: f.jantina || '',
+          umur: f.umur || '',
+          bangsa: f.bangsa || '',
+          s1: Number(f.s1) || 0,
+          s2: Number(f.s2) || 0,
+          s3: Number(f.s3) || 0,
+          s4: Number(f.s4) || 0,
+          s5: Number(f.s5) || 0,
+          comments: f.comments || '',
+          createdAt: createdAt
+        };
+      });
+      await supabase.from('feedback').upsert(feedbackToInsert, { onConflict: 'id' });
+    }
+
+    // Refresh memory cache from Supabase
+    await refreshFromSupabase();
+
     res.json({
-      success,
-      message: 'Data terkini berjaya ditarik dari Google Sheets.',
+      success: true,
+      message: 'Data terkini berjaya ditarik dari Google Sheets dan disegerakkan ke Supabase.',
       totalApplications: db.applications.length,
       lastSyncTime,
     });
   } catch (err: any) {
+    console.error('[iREPRO Server] Pull from sheets error:', err);
     res.status(500).json({ error: 'Gagal menarik data dari Google Sheets.' });
   }
 });
@@ -987,6 +1259,20 @@ app.post('/api/sheets/push-record', async (req, res) => {
     const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : undefined;
     const { targetSheet, rowValues } = prepareSheetRow(record);
     const result = await appendRowToGoogleSheet(targetSheet, rowValues, bearerToken);
+
+    if (result.success) {
+      // Re-pull row index and save to Supabase
+      const { applications: freshApps } = await syncAllSheets();
+      const syncedApp = freshApps.find(a => a.applicationId === applicationId);
+      if (syncedApp && syncedApp.sheetRowIndex !== undefined) {
+        await supabase.from('applications').update({
+          sheetRowIndex: syncedApp.sheetRowIndex
+        }).eq('applicationId', applicationId);
+        
+        // Also update local cache
+        record.sheetRowIndex = syncedApp.sheetRowIndex;
+      }
+    }
 
     res.json({
       success: result.success,
@@ -1019,40 +1305,58 @@ app.put('/api/applications/:id', async (req, res) => {
     updatedAt: new Date().toISOString(),
   };
 
-  db.applications[index] = updated;
-  saveDb();
+  // 1. Update in Supabase first
+  const { error: updateError } = await supabase.from('applications').update({
+    category: updated.category,
+    language: updated.language,
+    applicantName: updated.applicantName,
+    email: updated.email,
+    institution: updated.institution,
+    title: updated.title,
+    innovationData: updated.innovationData || null,
+    researchData: updated.researchData || null,
+    generatedDocuments: updated.generatedDocuments,
+    driveUrl: updated.driveUrl,
+    updatedAt: updated.updatedAt
+  }).eq('applicationId', updated.applicationId);
 
-  // Sync edits to Google Sheets in-place
-  if (existing.sheetRowIndex !== undefined && existing.sourceSheet) {
+  if (updateError) {
+    console.error('[Supabase] Error updating application:', updateError);
+    return res.status(500).json({ error: 'Gagal mengemaskini permohonan ke database.' });
+  }
+
+  db.applications[index] = updated;
+
+  // 2. Sync edits to Google Sheets in-place (in the background)
+  if (existing.sheetRowIndex !== undefined && existing.sheetRowIndex !== null && existing.sourceSheet) {
     const appsScriptUrl = process.env.APPS_SCRIPT_URL;
     if (appsScriptUrl) {
-      try {
-        const { targetSheet, rowValues } = prepareSheetRow(updated);
-        const payload = {
-          action: 'updateRow',
-          targetSheet,
-          rowIndex: existing.sheetRowIndex - 1, // 0-based data row index
-          rowValues
-        };
-        console.log(`[Google Sheets] Updating in-place row ${existing.sheetRowIndex} for: ${updated.applicationId} in tab: ${targetSheet}...`);
-        
-        const updateRes = await fetch(appsScriptUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        const updateResult = await updateRes.json().catch(() => ({}));
-        console.log(`[Google Sheets] Update response:`, updateResult);
-        
-        // Refresh memory cache from Google Sheets immediately
-        await refreshFromGoogleSheets();
-      } catch (err: any) {
-        console.error('[Google Sheets] Error updating sheet row:', err);
-      }
+      (async () => {
+        try {
+          const { targetSheet, rowValues } = prepareSheetRow(updated);
+          const payload = {
+            action: 'updateRow',
+            targetSheet,
+            rowIndex: (existing.sheetRowIndex as number) - 1, // 0-based data row index
+            rowValues
+          };
+          console.log(`[Google Sheets Background Update] Updating in-place row ${existing.sheetRowIndex} for: ${updated.applicationId} in tab: ${targetSheet}...`);
+          
+          const updateRes = await fetch(appsScriptUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const updateResult = await updateRes.json().catch(() => ({}));
+          console.log(`[Google Sheets Background Update] Update response:`, updateResult);
+        } catch (err: any) {
+          console.error('[Google Sheets Background Update] Error updating sheet row:', err);
+        }
+      })();
     }
   }
 
-  const finalRecord = db.applications.find(a => a.id === id || a.applicationId === id) || updated;
+  const finalRecord = updated;
 
   addAuditLog(
     `${finalRecord.icNumber} (${finalRecord.applicantName})`,
@@ -1073,27 +1377,55 @@ app.delete('/api/applications/:id', async (req, res) => {
   }
 
   const deleted = db.applications.splice(index, 1)[0];
-  saveDb();
 
-  // Delete from Google Sheet via Apps Script
-  const appsScriptUrl = process.env.APPS_SCRIPT_URL;
-  if (appsScriptUrl && deleted.sourceSheet && deleted.sheetRowIndex !== undefined) {
-    try {
-      const sheetName = encodeURIComponent(deleted.sourceSheet);
-      const deleteUrl = `${appsScriptUrl}?action=deleteRow&sheet=${sheetName}&rowIndex=${deleted.sheetRowIndex}`;
-      const delRes = await fetch(deleteUrl, { method: 'GET', redirect: 'follow' });
-      const delText = await delRes.text();
-      const jsonStart = delText.indexOf('{');
-      if (jsonStart >= 0) {
-        const delJson = JSON.parse(delText.substring(jsonStart, delText.lastIndexOf('}') + 1));
-        console.log(`[Google Sheets] Delete row result:`, delJson);
-        
-        // Refresh memory cache from Google Sheets immediately to update remaining row indices
-        await refreshFromGoogleSheets();
-      }
-    } catch (err: any) {
-      console.warn(`[Google Sheets] Failed to delete row from sheet:`, err.message);
+  // 1. Delete from Supabase first
+  const { error: deleteError } = await supabase.from('applications').delete().eq('applicationId', deleted.applicationId);
+  if (deleteError) {
+    console.error('[Supabase] Error deleting application:', deleteError);
+    // Put it back to cache if Supabase delete failed
+    db.applications.splice(index, 0, deleted);
+    return res.status(500).json({ error: 'Gagal memadam permohonan dari database.' });
+  }
+
+  // 2. Permanently record this deletion so future syncs cannot restore it
+  await supabase.from('deleted_applications').upsert(
+    { applicationId: deleted.applicationId, deletedAt: new Date().toISOString() },
+    { onConflict: 'applicationId' }
+  ).then(({ error }) => {
+    if (error && error.code !== '42P01') { // ignore if table doesn't exist yet
+      console.warn('[Supabase] Could not record deletion:', error.message);
     }
+  });
+
+  // 3. Delete from Google Sheet via Apps Script (in the background)
+  const appsScriptUrl = process.env.APPS_SCRIPT_URL;
+  if (appsScriptUrl && deleted.sourceSheet && deleted.sheetRowIndex !== undefined && deleted.sheetRowIndex !== null) {
+    (async () => {
+      try {
+        const sheetName = encodeURIComponent(deleted.sourceSheet);
+        const deleteUrl = `${appsScriptUrl}?action=deleteRow&sheet=${sheetName}&rowIndex=${deleted.sheetRowIndex}`;
+        const delRes = await fetch(deleteUrl, { method: 'GET', redirect: 'follow' });
+        const delText = await delRes.text();
+        console.log(`[Google Sheets Background Delete] Delete row result for ${deleted.applicationId}:`, delText);
+        
+        // Re-pull and update sheetRowIndex for remaining rows ONLY — skip the deleted one
+        const { applications: freshApps } = await syncAllSheets();
+        for (const app of freshApps) {
+          // IMPORTANT: Never re-insert the deleted record
+          if (app.applicationId === deleted.applicationId) continue;
+
+          await supabase.from('applications').update({
+            sheetRowIndex: app.sheetRowIndex
+          }).eq('applicationId', app.applicationId);
+          
+          // Also update local cache
+          const cacheApp = db.applications.find(a => a.applicationId === app.applicationId);
+          if (cacheApp) cacheApp.sheetRowIndex = app.sheetRowIndex;
+        }
+      } catch (err: any) {
+        console.warn(`[Google Sheets Background Delete] Failed to delete row from sheet:`, err.message);
+      }
+    })();
   }
 
   addAuditLog(
@@ -1107,7 +1439,143 @@ app.delete('/api/applications/:id', async (req, res) => {
 });
 
 
-// 9. Statistics Aggregation
+// 9. Backup endpoint — dibaca oleh Vercel Cron setiap Ahad 2am MYT (18:00 UTC Ahad)
+// Boleh juga dipanggil secara manual: GET /api/backup?secret=<BACKUP_SECRET>
+app.get('/api/backup', async (req, res) => {
+  const secret = process.env.BACKUP_SECRET || 'irepro-backup-2026';
+  const providedSecret = req.headers['authorization']?.replace('Bearer ', '') || req.query.secret;
+
+  // Vercel Cron sends requests with a special header — allow those too
+  const isVercelCron = req.headers['x-vercel-cron'] === '1' || req.headers['user-agent']?.includes('vercel-cron');
+
+  if (!isVercelCron && providedSecret !== secret) {
+    return res.status(401).json({ error: 'Unauthorized. Provide ?secret=<BACKUP_SECRET> or set Authorization header.' });
+  }
+
+  // Helper: convert array of objects to CSV string with proper escaping
+  function toCsv(rows: any[], columns: string[]): string {
+    const escape = (val: any): string => {
+      if (val === null || val === undefined) return '';
+      const str = typeof val === 'object' ? JSON.stringify(val) : String(val);
+      // Wrap in quotes if contains comma, newline, or quote
+      if (str.includes(',') || str.includes('\n') || str.includes('"')) {
+        return '"' + str.replace(/"/g, '""') + '"';
+      }
+      return str;
+    };
+    const header = columns.join(',');
+    const body = rows.map(row => columns.map(col => escape(row[col])).join(','));
+    return [header, ...body].join('\r\n');
+  }
+
+  try {
+    console.log('[Backup] Starting Supabase CSV backup to Google Drive...');
+
+    // Fetch all data from Supabase
+    const [appsRes, usersRes, feedbackRes, deletedRes, logsRes] = await Promise.all([
+      supabase.from('applications').select('*').order('createdAt', { ascending: true }),
+      supabase.from('users').select('*').order('createdAt', { ascending: true }),
+      supabase.from('feedback').select('*').order('createdAt', { ascending: true }),
+      supabase.from('deleted_applications').select('*').order('deletedAt', { ascending: true }),
+      supabase.from('audit_logs').select('*').order('createdAt', { ascending: false }).limit(500)
+    ]);
+
+    if (appsRes.error) throw appsRes.error;
+    if (usersRes.error) throw usersRes.error;
+
+    const apps = appsRes.data || [];
+    const users = usersRes.data || [];
+    const feedbacks = feedbackRes.data || [];
+    const deleted = deletedRes.data || [];
+    const logs = logsRes.data || [];
+
+    // Define CSV columns for each table
+    const csvFiles = [
+      {
+        table: 'applications',
+        rows: apps.length,
+        csv: toCsv(apps, [
+          'applicationId', 'applicationType', 'category', 'language',
+          'icNumber', 'applicantName', 'email', 'institution', 'title',
+          'year', 'status', 'sourceSheet', 'sheetRowIndex', 'driveUrl',
+          'createdAt', 'updatedAt'
+        ])
+      },
+      {
+        table: 'users',
+        rows: users.length,
+        csv: toCsv(users, [
+          'id', 'icNumber', 'name', 'phone', 'email',
+          'institution', 'department', 'createdAt'
+        ])
+      },
+      {
+        table: 'feedback',
+        rows: feedbacks.length,
+        csv: toCsv(feedbacks, [
+          'id', 'jantina', 'umur', 'bangsa',
+          's1', 's2', 's3', 's4', 's5', 'comments', 'createdAt'
+        ])
+      },
+      {
+        table: 'deleted_applications',
+        rows: deleted.length,
+        csv: toCsv(deleted, ['applicationId', 'deletedAt'])
+      },
+      {
+        table: 'audit_logs',
+        rows: logs.length,
+        csv: toCsv(logs, ['id', 'user', 'action', 'applicationId', 'details', 'timestamp'])
+      }
+    ];
+
+    const stats = {
+      totalApplications: apps.length,
+      totalUsers: users.length,
+      totalFeedback: feedbacks.length,
+      totalDeleted: deleted.length,
+      totalInovasi: apps.filter((a: any) => a.applicationType === 'INOVASI').length,
+      totalPenyelidikan: apps.filter((a: any) => a.applicationType === 'PENYELIDIKAN').length
+    };
+
+    // Upload CSV files to Google Drive via Apps Script
+    const appsScriptUrl = process.env.APPS_SCRIPT_URL;
+    if (!appsScriptUrl) throw new Error('APPS_SCRIPT_URL not configured');
+
+    const driveRes = await fetch(appsScriptUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'saveBackupToDrive', csvFiles })
+    });
+
+    const driveResult = await driveRes.json() as any;
+    if (!driveResult.success) throw new Error(driveResult.error || 'Apps Script backup failed');
+
+    // Log backup event
+    const fileList = (driveResult.files || []).map((f: any) => f.fileName).join(', ');
+    addAuditLog(
+      'System (Cron)',
+      'Backup',
+      undefined,
+      `Backup CSV berjaya: ${driveResult.files?.length || 0} fail (${driveResult.totalSizeKb || 0} KB) — ${fileList}`
+    );
+
+    console.log(`[Backup] ✓ CSV backup complete: ${driveResult.files?.length} files, ${driveResult.totalSizeKb} KB`);
+    return res.json({
+      success: true,
+      message: `Backup berjaya: ${driveResult.files?.length || 0} fail CSV`,
+      files: driveResult.files,
+      stats,
+      totalSizeKb: driveResult.totalSizeKb
+    });
+
+  } catch (err: any) {
+    console.error('[Backup] Error:', err.message);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 10. Statistics Aggregation
 app.get('/api/stats', (req, res) => {
   const currentYear = new Date().getFullYear();
   const totalApplications = db.applications.length;
@@ -1228,15 +1696,6 @@ app.post('/api/feedback', async (req, res) => {
     formattedDate
   ];
 
-  try {
-    const authHeader = req.headers.authorization;
-    const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : undefined;
-    await appendRowToGoogleSheet('maklum balas', rowValues, bearerToken);
-    console.log(`[iREPRO Server] Successfully appended feedback to 'maklum balas' sheet tab.`);
-  } catch (err) {
-    console.warn('[iREPRO Server] Could not write feedback to Google Sheets:', err);
-  }
-
   const item: Feedback = {
     id: `fb-${Date.now()}`,
     jantina: jantina || 'Lelaki',
@@ -1251,8 +1710,27 @@ app.post('/api/feedback', async (req, res) => {
     createdAt: new Date().toISOString(),
   };
 
+  // Write to Supabase first
+  const { error: fbError } = await supabase.from('feedback').insert(item);
+  if (fbError) {
+    console.error('[Supabase] Error inserting feedback:', fbError);
+    return res.status(500).json({ error: 'Gagal merekodkan maklum balas.' });
+  }
+
   db.feedback.push(item);
-  saveDb();
+
+  // Background sync feedback to Google Sheets
+  (async () => {
+    try {
+      const authHeader = req.headers.authorization;
+      const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : undefined;
+      await appendRowToGoogleSheet('maklum balas', rowValues, bearerToken);
+      console.log(`[iREPRO Server] Successfully appended feedback to 'maklum balas' sheet tab.`);
+    } catch (err) {
+      console.warn('[iREPRO Server] Could not write feedback to Google Sheets:', err);
+    }
+  })();
+
   res.json({ success: true, message: 'Maklum balas penggunaan iREPRO berjaya direkodkan. Terima kasih!' });
 });
 
@@ -1263,8 +1741,15 @@ app.get('/api/feedback', (req, res) => {
 const GOOGLE_DOC_TEMPLATES: Record<string, string> = {
   innovation_ms_appointment: '1MNR1SAoZYiz91ItxZN8dvNPoP0Rxz8XtP4eemhcStXs',
   innovation_ms_proposal: '1oTMDV7wNeVI0M8tTHZBxRBuxHZ9Vw0wLTz19h8h7jvw',
+  innovation_student_ms_proposal: '1sEwenqky6oDrY4GgqrXlX95mPsNjrugz61klNzu-c2s',
   innovation_en_appointment: '1MNR1SAoZYiz91ItxZN8dvNPoP0Rxz8XtP4eemhcStXs', // Fallback to BM layout
   innovation_en_proposal: '123A87vegDr84kN_CfZqgmFE5NsKmskzg53fNexWBOaI',
+  innovation_student_en_proposal: '1Jrgr9H-ERnLfDAqQN_CS_lV0uw5dlZUdIXAknaWwrO4',
+  innovation_lecturer_ms_report: '1VmxmoM3ppC_XBBVDjvF3jN_HziCZZpJdNT1okwogpSg',
+  innovation_lecturer_en_report: '1J_ecaL8sMGa0gjbF6FDJK58bclFLHF9Wrq9PZ5RzmOk',
+  innovation_student_ms_report: '1RzBfF6du9uIXXNhLDx6mXQAFruNnElxYnS7H_Hy0kVU',
+  innovation_student_en_report: '1yzaRAtRn7cdM5J67h1nzSisFaq7DqyHxyQs8JomVqVY',
+  innovation_certificate: '1UDlAfDrZZjJ0VVLaU8vPhpo5VknQgNpKdxIQuky3t4w',
   research_cat1_ms_appointment: '11nFMnx-oVpeFHEi2MAKROtW1N1HNyb-9Krp7Gl5CXdU',
   research_cat1_ms_appendix: '1icgQ-qs0-nqbD98e788D4Kv9eEaRqHZG4EMtcEZnstQ',
   research_cat1_ms_proposal: '1bFvTnQrDuAJDaimq_Y5fIyjfzS5RHOt5NWJtLp2Fd-s',
@@ -1307,6 +1792,7 @@ function buildReplacements(templateKey: string, app: any): Record<string, string
     '[ NAMA ]': chiefName,
     '[NAMA 1]': members[0]?.name || '',
     '[NAMA 2]': members[1]?.name || '',
+    '[NAMA 3]': members[2]?.name || '',
     '[TAJUK]': title,
     '[TAJUK PENYELIDIKAN]': title,
     '[PENGARAH]': adminInfo.directorName || '',
@@ -1327,6 +1813,7 @@ function buildReplacements(templateKey: string, app: any): Record<string, string
     '[TIMBALAN PENGARAH]': adminInfo.deputyDirectorName || '',
     '[INSTITUSI 1]': members[0]?.institution || '',
     '[INSTITUSI 2]': members[1]?.institution || '',
+    '[INSTITUSI 3]': members[2]?.institution || '',
     '[NAMA KUPIK]': adminInfo.kupikName || '',
     '[PENGARAH PPI]': adminInfo.ppiDirectorName || '',
     '[NAMA PENGARAH PPI]': adminInfo.ppiDirectorName || '',
@@ -1345,6 +1832,8 @@ function buildReplacements(templateKey: string, app: any): Record<string, string
     '<<INSTITUSI 1>>': members[0]?.institution || '',
     '<<NAMA 2>>': members[1]?.name || '',
     '<<INSTITUSI 2>>': members[1]?.institution || '',
+    '<<NAMA 3>>': members[2]?.name || '',
+    '<<INSTITUSI 3>>': members[2]?.institution || '',
     '<<NAMA KUPIK>>': adminInfo.kupikName || '',
 
     '[NO. KP]': chiefIc,
@@ -1356,6 +1845,9 @@ function buildReplacements(templateKey: string, app: any): Record<string, string
     '[NO. KP 2]': members[1]?.icNumber || '',
     '[NO. TELEFON 2]': members[1]?.phone || '',
     '[JABATAN 2]': members[1]?.department || '',
+    '[NO. KP 3]': members[2]?.icNumber || '',
+    '[NO. TELEFON 3]': members[2]?.phone || '',
+    '[JABATAN 3]': members[2]?.department || '',
     '[PERSIDANGAN]': app.researchData?.conference || '',
     '[TEMPAT]': app.researchData?.location || '',
     '[SAMPEL]': app.researchData?.sample || '',
@@ -1430,6 +1922,48 @@ app.post('/api/documents/generate-docx', async (req, res) => {
 
   } catch (err: any) {
     console.error('[Local DOCX Generator] Failed to generate document:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/documents/generate-pdf', async (req, res) => {
+  try {
+    const { templateKey, applicationId } = req.body;
+    const appRecord = db.applications.find(a => a.id === applicationId || a.applicationId === applicationId);
+    if (!appRecord) {
+      return res.status(404).json({ error: 'Permohonan tidak dijumpai.' });
+    }
+
+    const templateId = GOOGLE_DOC_TEMPLATES[templateKey];
+    if (!templateId) {
+      return res.status(400).json({ error: 'Templat dokumen tidak dijumpai.' });
+    }
+
+    console.log(`[Local PDF Generator] Downloading PDF template: ${templateKey} (${templateId})...`);
+    let pdfUrl = `https://docs.google.com/presentation/d/${templateId}/export/pdf`;
+    let pdfRes = await fetch(pdfUrl);
+    
+    if (!pdfRes.ok) {
+      pdfUrl = `https://docs.google.com/document/d/${templateId}/export?format=pdf`;
+      pdfRes = await fetch(pdfUrl);
+    }
+
+    if (!pdfRes.ok) {
+      return res.status(500).json({ error: `Gagal memuat turun PDF daripada Google (HTTP ${pdfRes.status}).` });
+    }
+
+    const arrayBuffer = await pdfRes.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    const docName = `${applicationId}_${templateKey}.pdf`;
+    console.log(`[Local PDF Generator] PDF Document ${docName} successfully generated (${buffer.length} bytes)!`);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${docName}"`);
+    res.send(buffer);
+
+  } catch (err: any) {
+    console.error('[Local PDF Generator] Failed to generate PDF:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

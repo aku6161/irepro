@@ -12,7 +12,7 @@ import {
   Layers
 } from 'lucide-react';
 import { getDocumentTemplatesForApplication, generateDocumentHtml } from '../utils/documentTemplates';
-import { downloadAsWordDoc } from '../utils/docExport';
+import { downloadAsWordDoc, downloadAsPdf } from '../utils/docExport';
 
 interface SuccessPageProps {
   application: ApplicationRecord | null;
@@ -52,8 +52,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
   const handleDirectDownload = (doc: GeneratedDocument) => {
     try {
-      downloadAsWordDoc(doc, application);
-      showToast(`Dokumen ${doc.documentType} berjaya dimuat turun (.doc)!`, 'success');
+      if (doc.fileName.endsWith('.pdf') || doc.templateKey === 'innovation_certificate') {
+        downloadAsPdf(doc, application);
+        showToast(`Dokumen ${doc.documentType} berjaya dimuat turun (.pdf)!`, 'success');
+      } else {
+        downloadAsWordDoc(doc, application);
+        showToast(`Dokumen ${doc.documentType} berjaya dimuat turun (.doc)!`, 'success');
+      }
     } catch (err) {
       showToast('Gagal memuat turun dokumen.', 'error');
     }
@@ -92,7 +97,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           <div>
             <h2 className="text-base font-bold text-slate-900">Dokumen Rasmi Yang Dijana</h2>
             <p className="text-xs text-slate-500">
-              Format piawai JPPKK ({application.language === 'MS' ? 'Bahasa Melayu' : 'English'}) • Format Microsoft Word (.doc)
+              Format piawai JPPKK ({application.language === 'MS' ? 'Bahasa Melayu' : 'English'}) • Format Microsoft Word (.doc) &amp; PDF (.pdf)
             </p>
           </div>
           <span className="text-xs font-semibold bg-red-50 text-red-700 px-2.5 py-1 rounded-lg border border-red-200">
@@ -101,42 +106,45 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         </div>
 
         <div className="space-y-2.5">
-          {docsList.map((doc, idx) => (
-            <div
-              key={doc.id || idx}
-              onClick={() => handleDirectDownload(doc)}
-              className="flex items-center justify-between p-3.5 bg-slate-50 hover:bg-red-50/50 border border-slate-200 rounded-xl transition-all cursor-pointer group"
-            >
-              <div className="flex items-center space-x-3 truncate">
-                <div className="w-9 h-9 rounded-lg bg-red-100 text-red-700 flex items-center justify-center shrink-0 group-hover:bg-red-600 group-hover:text-white transition-colors">
-                  <FileText className="w-5 h-5" />
+          {docsList.map((doc, idx) => {
+            const isPdf = doc.fileName.endsWith('.pdf') || doc.templateKey === 'innovation_certificate';
+            return (
+              <div
+                key={doc.id || idx}
+                onClick={() => handleDirectDownload(doc)}
+                className="flex items-center justify-between p-3.5 bg-slate-50 hover:bg-red-50/50 border border-slate-200 rounded-xl transition-all cursor-pointer group"
+              >
+                <div className="flex items-center space-x-3 truncate">
+                  <div className="w-9 h-9 rounded-lg bg-red-100 text-red-700 flex items-center justify-center shrink-0 group-hover:bg-red-600 group-hover:text-white transition-colors">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <div className="truncate">
+                    <h3 className="font-bold text-xs text-slate-900 truncate">
+                      {doc.documentType}
+                    </h3>
+                    <p className="text-[11px] font-mono text-slate-500 truncate">
+                      {doc.fileName}
+                    </p>
+                  </div>
                 </div>
-                <div className="truncate">
-                  <h3 className="font-bold text-xs text-slate-900 truncate">
-                    {doc.documentType}
-                  </h3>
-                  <p className="text-[11px] font-mono text-slate-500 truncate">
-                    {doc.fileName.replace(/\.pdf$/, '.doc')}
-                  </p>
-                </div>
-              </div>
 
-              <div className="flex items-center space-x-2 shrink-0 ml-3">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDirectDownload(doc);
-                  }}
-                  className="flex items-center space-x-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold px-3.5 py-2 rounded-lg shadow-xs transition-all"
-                  title="Muat Turun Microsoft Word (.doc)"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Muat Turun (.doc)</span>
-                </button>
+                <div className="flex items-center space-x-2 shrink-0 ml-3">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDirectDownload(doc);
+                    }}
+                    className="flex items-center space-x-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold px-3.5 py-2 rounded-lg shadow-xs transition-all"
+                    title={`Muat Turun ${isPdf ? 'PDF (.pdf)' : 'Microsoft Word (.doc)'}`}
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Muat Turun ({isPdf ? '.pdf' : '.doc'})</span>
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 

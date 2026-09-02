@@ -106,7 +106,8 @@ export const UserDashboard: React.FC = () => {
   const handleDownloadDoc = (app: ApplicationRecord, templateKey: string) => {
     try {
       const result = downloadDocumentByTemplateKey(app, templateKey);
-      showToast(`Dokumen ${result.docType} berjaya dimuat turun (.doc)!`, 'success');
+      const ext = result.fileName.endsWith('.pdf') ? '.pdf' : '.doc';
+      showToast(`Dokumen ${result.docType} berjaya dimuat turun (${ext})!`, 'success');
     } catch (err) {
       showToast('Gagal memuat turun dokumen.', 'error');
     }
@@ -127,7 +128,7 @@ export const UserDashboard: React.FC = () => {
             Selamat Datang, {currentUser?.name || 'Penyelidik'}
           </h1>
           <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-2xl font-normal">
-            No. Kad Pengenalan: <span className="font-mono text-rose-300 font-semibold">{currentUser?.icNumber || '-'}</span> • Urus dan pantau rekod permohonan inovasi dan kertas cadangan penyelidikan anda.
+            Urus dan pantau rekod permohonan inovasi dan kertas cadangan penyelidikan anda.
           </p>
         </div>
       </div>

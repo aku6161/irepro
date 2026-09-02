@@ -1,6 +1,6 @@
 export type ApplicationType = 'INOVASI' | 'PENYELIDIKAN';
 export type Language = 'MS' | 'EN';
-export type ResearchCategory = 'CAT_1' | 'CAT_2' | 'CAT_3' | 'CAT_4' | 'CAT_5';
+export type ResearchCategory = 'CAT_1' | 'CAT_2' | 'CAT_3' | 'CAT_4' | 'CAT_5' | 'PENSYARAH' | 'PELAJAR';
 export type RecordStatus = 'DRAFT' | 'GENERATED' | 'COMPLETED';
 export type UserRole = 'USER' | 'ADMIN';
 
@@ -187,8 +187,11 @@ export const formatCategoryLabel = (cat?: ResearchCategory | string): string => 
       return 'KATEGORI IV';
     case 'CAT_5':
       return 'KATEGORI V';
+    case 'PENSYARAH':
+      return 'KATEGORI PENSYARAH';
+    case 'PELAJAR':
+      return 'KATEGORI PELAJAR';
     default:
       return String(cat).replace('_', ' ');
   }
 };
-

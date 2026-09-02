@@ -59,7 +59,7 @@ function doGet(e) {
   if (params.action === "appendRow" && params.sheet && params.data) {
     try {
       var sheetId = params.spreadsheetId || "1PEMSNeV9dnY4LZZpbE_CpcIJqccJ3SjPnCZ9fAN5uBY";
-      var rowValues = JSON.parse(decodeURIComponent(params.data));
+      var rowValues = JSON.parse(params.data);
       var ss = SpreadsheetApp.openById(sheetId);
       var sheet = ss.getSheetByName(params.sheet);
       if (!sheet) {
@@ -118,7 +118,7 @@ function doGet(e) {
     try {
       var sheetId = params.spreadsheetId || "1PEMSNeV9dnY4LZZpbE_CpcIJqccJ3SjPnCZ9fAN5uBY";
       var rowIndex = parseInt(params.rowIndex);
-      var rowValues = JSON.parse(decodeURIComponent(params.data));
+      var rowValues = JSON.parse(params.data);
       var ss = SpreadsheetApp.openById(sheetId);
       var sheet = ss.getSheetByName(params.sheet);
       if (!sheet) {
@@ -232,6 +232,71 @@ function doPost(e) {
       }
       sheet.deleteRow(sheetRow);
       return createJsonResponse({ success: true, message: "Berjaya padam baris " + sheetRow + " dari " + payload.targetSheet });
+    }
+
+    // ── ACTION: saveBackupToDrive ── Simpan backup CSV ke Google Drive
+    if (payload.action === "saveBackupToDrive" && payload.csvFiles) {
+      try {
+        var backupFolderId = "1MWjDDWsEgI1hE23a-PEn0NDTeaOzdmGy";
+        var folder = DriveApp.getFolderById(backupFolderId);
+
+        // Format tarikh untuk nama fail
+        var now = new Date();
+        var pad = function(n) { return n < 10 ? "0" + n : String(n); };
+        var dateStr = now.getFullYear() + "-" + pad(now.getMonth() + 1) + "-" + pad(now.getDate());
+
+        var savedFiles = [];
+        var totalSize = 0;
+
+        // Simpan setiap jadual sebagai fail CSV berasingan
+        for (var i = 0; i < payload.csvFiles.length; i++) {
+          var csvFile = payload.csvFiles[i];
+          var fileName = "iREPRO_backup_" + dateStr + "_" + csvFile.table + ".csv";
+
+          // Padam fail lama dengan nama yang sama (ganti dengan versi terbaru)
+          var existing = folder.getFilesByName(fileName);
+          while (existing.hasNext()) {
+            existing.next().setTrashed(true);
+          }
+
+          // Simpan fail CSV baharu
+          var blob = Utilities.newBlob("\uFEFF" + csvFile.csv, "text/csv", fileName); // BOM untuk Excel UTF-8
+          var file = folder.createFile(blob);
+          savedFiles.push({ table: csvFile.table, fileName: fileName, fileUrl: file.getUrl(), rows: csvFile.rows });
+          totalSize += csvFile.csv.length;
+        }
+
+        // Kekal hanya 8 set backup terkini (buang set lama — 1 set = semua fail pada 1 tarikh)
+        var allCsvFiles = [];
+        var iterCsv = folder.getFilesByType("text/csv");
+        while (iterCsv.hasNext()) {
+          var f = iterCsv.next();
+          if (f.getName().startsWith("iREPRO_backup_")) {
+            allCsvFiles.push({ file: f, date: f.getDateCreated(), name: f.getName() });
+          }
+        }
+        // Kumpulkan mengikut tarikh dan buang yang melebihi 8 tarikh
+        var dateGroups = {};
+        allCsvFiles.forEach(function(item) {
+          var nameParts = item.name.split("_"); // iREPRO_backup_YYYY-MM-DD_table.csv
+          var fileDate = nameParts.length >= 3 ? nameParts[2] : "unknown";
+          if (!dateGroups[fileDate]) dateGroups[fileDate] = [];
+          dateGroups[fileDate].push(item);
+        });
+        var sortedDates = Object.keys(dateGroups).sort().reverse(); // terbaru dahulu
+        for (var d = 8; d < sortedDates.length; d++) {
+          dateGroups[sortedDates[d]].forEach(function(item) { item.file.setTrashed(true); });
+        }
+
+        return createJsonResponse({
+          success: true,
+          message: "Backup berjaya disimpan: " + savedFiles.length + " fail CSV untuk " + dateStr,
+          files: savedFiles,
+          totalSizeKb: Math.round(totalSize / 1024)
+        });
+      } catch (err) {
+        return createJsonResponse({ success: false, error: "Backup gagal: " + err.toString() });
+      }
     }
 
     // ── ACTION: Jana dokumen dari template Google Docs ──

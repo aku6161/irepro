@@ -54,8 +54,52 @@ export async function downloadAsWordDoc(doc: GeneratedDocument, app?: Applicatio
   }
 }
 
+export async function downloadAsPdf(doc: GeneratedDocument, app?: ApplicationRecord) {
+  if (!doc.applicationId) {
+    alert("Error: Tiada applicationId untuk menjana dokumen.");
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/documents/generate-pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        templateKey: doc.templateKey,
+        applicationId: doc.applicationId
+      })
+    });
+
+    const contentType = res.headers.get('content-type');
+    if (res.ok && contentType && contentType.includes('pdf')) {
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = window.document.createElement('a');
+      link.href = url;
+      
+      const baseFileName = (doc.fileName || `${doc.applicationId}_${doc.documentType}`)
+        .replace(/\.pdf$/i, '')
+        .replace(/\.html$/i, '')
+        .replace(/\.docx$/i, '')
+        .replace(/\.doc$/i, '');
+      
+      link.download = `${baseFileName}.pdf`;
+      window.document.body.appendChild(link);
+      link.click();
+      window.document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } else {
+      const data = await res.json();
+      throw new Error(data.error || "Ralat semasa menjana PDF di server.");
+    }
+  } catch (err: any) {
+    console.error('[Doc Export] PDF generation failed:', err);
+    alert(`Gagal Menjana PDF:\n\n${err.message}`);
+  }
+}
+
 /**
- * Directly download a specific document type for an application as a .doc file without opening any preview
+ * Directly download a specific document type for an application as a .doc or .pdf file without opening any preview
  */
 export function downloadDocumentByKeyword(app: ApplicationRecord, docTypeKeyword: string): { docType: string; fileName: string } {
   // Check if doc already exists in app.generatedDocuments with valid content
@@ -79,9 +123,11 @@ export function downloadDocumentByKeyword(app: ApplicationRecord, docTypeKeyword
     ? matchedTemplate.docType 
     : (existingDoc?.documentType || (app.applicationType === 'INOVASI' ? 'Kertas Cadangan Inovasi' : 'Kertas Cadangan Penyelidikan'));
     
+  const isPdf = matchedTemplate?.fileName.endsWith('.pdf') || targetTemplateKey === 'innovation_certificate';
+
   const targetFileName = matchedTemplate 
-    ? matchedTemplate.fileName.replace(/\.pdf$/, '.doc') 
-    : `${app.applicationId}_${targetDocType.replace(/\s+/g, '_')}.doc`;
+    ? matchedTemplate.fileName 
+    : `${app.applicationId}_${targetDocType.replace(/\s+/g, '_')}.${isPdf ? 'pdf' : 'doc'}`;
 
   // Always generate fresh, accurate document HTML using application record
   const generatedHtml = generateDocumentHtml(targetTemplateKey, app);
@@ -98,7 +144,11 @@ export function downloadDocumentByKeyword(app: ApplicationRecord, docTypeKeyword
     generatedAt: app.createdAt || new Date().toISOString(),
   };
 
-  downloadAsWordDoc(docToDownload, app);
+  if (isPdf) {
+    downloadAsPdf(docToDownload, app);
+  } else {
+    downloadAsWordDoc(docToDownload, app);
+  }
 
   return {
     docType: targetDocType,
@@ -107,16 +157,18 @@ export function downloadDocumentByKeyword(app: ApplicationRecord, docTypeKeyword
 }
 
 /**
- * Directly download a specific template key for an application as a .doc file
+ * Directly download a specific template key for an application as a .doc or .pdf file
  */
 export function downloadDocumentByTemplateKey(app: ApplicationRecord, templateKey: string): { docType: string; fileName: string } {
   const allTemplates = getDocumentTemplatesForApplication(app);
   const matchedTemplate = allTemplates.find((t) => t.key === templateKey);
 
   const targetDocType = matchedTemplate ? matchedTemplate.docType : 'Dokumen';
+  const isPdf = matchedTemplate?.fileName.endsWith('.pdf') || templateKey === 'innovation_certificate';
+
   const targetFileName = matchedTemplate 
-    ? matchedTemplate.fileName.replace(/\.pdf$/i, '.doc') 
-    : `${app.applicationId}_${templateKey}.doc`;
+    ? matchedTemplate.fileName 
+    : `${app.applicationId}_${templateKey}.${isPdf ? 'pdf' : 'doc'}`;
 
   const generatedHtml = generateDocumentHtml(templateKey, app);
 
@@ -132,7 +184,11 @@ export function downloadDocumentByTemplateKey(app: ApplicationRecord, templateKe
     generatedAt: app.createdAt || new Date().toISOString(),
   };
 
-  downloadAsWordDoc(docToDownload, app);
+  if (isPdf) {
+    downloadAsPdf(docToDownload, app);
+  } else {
+    downloadAsWordDoc(docToDownload, app);
+  }
 
   return {
     docType: targetDocType,

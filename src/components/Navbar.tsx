@@ -91,28 +91,30 @@ export const Navbar: React.FC<NavbarProps> = ({
             {userRole && (
               <div className="flex items-center space-x-2 sm:space-x-3">
                 {/* Active Role Pill */}
-                <div className="hidden sm:flex items-center space-x-2 bg-slate-800/80 border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs">
-                  {isAdmin ? (
-                    <>
-                      <ShieldCheck className="w-4 h-4 text-red-400" />
-                      <div>
-                        <span className="font-semibold text-red-300">Pentadbir (KUPIK)</span>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <User className="w-4 h-4 text-red-400" />
-                      <div className="max-w-[150px] lg:max-w-[200px] truncate text-left">
-                        <span className="font-semibold text-slate-200 truncate block">
-                          {currentUser?.name || currentUser?.icNumber}
-                        </span>
-                        <p className="text-[10px] text-slate-400 truncate">
-                          {currentUser?.institution || 'Pemohon'}
-                        </p>
-                      </div>
-                    </>
-                  )}
-                </div>
+                {isAdmin ? (
+                  <div className="hidden sm:flex items-center space-x-2 bg-slate-800/80 border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs">
+                    <ShieldCheck className="w-4 h-4 text-red-400" />
+                    <div>
+                      <span className="font-semibold text-red-300">Pentadbir (KUPIK)</span>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setActiveView('user_profile')}
+                    className="hidden sm:flex items-center space-x-2 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/80 hover:border-slate-600/80 rounded-lg px-3 py-1.5 text-xs text-left cursor-pointer transition-all active:scale-95 group focus:outline-none"
+                    title="Buka Profil Saya"
+                  >
+                    <User className="w-4 h-4 text-red-400 group-hover:scale-110 transition-transform" />
+                    <div className="max-w-[150px] lg:max-w-[200px] truncate">
+                      <span className="font-semibold text-slate-200 group-hover:text-white truncate block">
+                        {currentUser?.name || currentUser?.icNumber}
+                      </span>
+                      <p className="text-[10px] text-slate-400 group-hover:text-slate-300 truncate">
+                        {currentUser?.institution || 'Pemohon'}
+                      </p>
+                    </div>
+                  </button>
+                )}
 
                 {/* Logout Button */}
                 <button

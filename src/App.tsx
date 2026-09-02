@@ -9,6 +9,7 @@ import { ApplicationForm } from './components/ApplicationForm';
 import { SuccessPage } from './components/SuccessPage';
 import { UserGuide } from './components/UserGuide';
 import { ContactUs } from './components/ContactUs';
+import { UserProfileView } from './components/UserProfileView';
 import { UserLoginModal } from './components/UserLoginModal';
 import { AdminLoginModal } from './components/AdminLoginModal';
 import { DocumentViewerModal } from './components/DocumentViewerModal';
@@ -109,6 +110,17 @@ export function App() {
           {activeView === 'panduan' && <UserGuide />}
 
           {activeView === 'hubungi' && <ContactUs />}
+
+          {activeView === 'user_profile' && (
+            userRole ? (
+              <UserProfileView />
+            ) : (
+              <LandingPage
+                onOpenUserLogin={() => setIsUserLoginOpen(true)}
+                onOpenAdminLogin={() => setIsAdminLoginOpen(true)}
+              />
+            )
+          )}
         </main>
       </div>
 

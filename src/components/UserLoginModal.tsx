@@ -9,21 +9,25 @@ interface UserLoginModalProps {
 
 export const UserLoginModal: React.FC<UserLoginModalProps> = ({ isOpen, onClose }) => {
   const { loginUser, setActiveView, showToast } = useApp();
-  const [icInput, setIcInput] = useState('');
+  const [emailInput, setEmailInput] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   // New User Registration states
   const [isRegistering, setIsRegistering] = useState(false);
   const [regName, setRegName] = useState('');
+  const [regIc, setRegIc] = useState('');
   const [regPhone, setRegPhone] = useState('');
   const [regEmail, setRegEmail] = useState('');
-  const [regInstitution, setRegInstitution] = useState('Kolej Komuniti Beaufort');
+  const [regInstitution, setRegInstitution] = useState('KOLEJ KOMUNITI BEAUFORT');
+
+  // Overwrite confirmation modal state
+  const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false);
 
   if (!isOpen) return null;
 
   // Auto-format IC input to 000000-00-0000
-  const handleIcChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleRegIcChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setError('');
     const rawVal = e.target.value.replace(/\D/g, '').slice(0, 12); // strip non-digits, max 12
 
@@ -34,7 +38,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({ isOpen, onClose 
       formatted = `${rawVal.slice(0, 6)}-${rawVal.slice(6, 8)}-${rawVal.slice(8, 12)}`;
     }
 
-    setIcInput(formatted);
+    setRegIc(formatted);
   };
 
   // Auto-format phone input to 000-00000000 (e.g. 012-3456789 or 011-12345678)
@@ -52,15 +56,14 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({ isOpen, onClose 
 
   const handleLookupOrLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const digits = icInput.replace(/\D/g, '');
+    const cleanEmail = emailInput.trim().toLowerCase();
 
     // Validation
-    if (digits.length !== 12) {
-      setError('Sila masukkan 12 digit No. Kad Pengenalan yang sah (contoh: 880512-10-5431).');
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      setError('Sila masukkan alamat emel yang sah (contoh: pengguna@test.com).');
       return;
     }
-
-    const cleanIc = `${digits.slice(0, 6)}-${digits.slice(6, 8)}-${digits.slice(8, 12)}`;
 
     try {
       setIsLoading(true);
@@ -70,14 +73,13 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({ isOpen, onClose 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          icNumber: cleanIc,
-          rawDigits: digits,
+          email: cleanEmail,
         }),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || 'Gagal log masuk');
+        throw new Error(data.message || data.error || 'Gagal log masuk');
       }
 
       if (data.exists && data.user) {
@@ -86,8 +88,8 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({ isOpen, onClose 
         setActiveView('user_dashboard');
         handleClose();
       } else {
-        // IC data not found -> prompt user registration
-        setIcInput(cleanIc);
+        // Email not found -> prompt user registration
+        setRegEmail(cleanEmail);
         setIsRegistering(true);
         setError('');
       }
@@ -98,15 +100,18 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({ isOpen, onClose 
     }
   };
 
-  const handleRegisterSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const digits = icInput.replace(/\D/g, '');
+  const performRegister = async (overwrite: boolean = false) => {
+    const digits = regIc.replace(/\D/g, '');
     const cleanIc = digits.length === 12 
       ? `${digits.slice(0, 6)}-${digits.slice(6, 8)}-${digits.slice(8, 12)}`
-      : icInput.trim();
+      : regIc.trim();
     const cleanName = regName.trim().toUpperCase();
     const phoneDigits = regPhone.replace(/\D/g, '');
 
+    if (digits.length !== 12) {
+      setError('Sila masukkan 12 digit No. Kad Pengenalan yang sah.');
+      return;
+    }
     if (!cleanName) {
       setError('Sila masukkan Nama Penuh anda.');
       return;
@@ -140,11 +145,16 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({ isOpen, onClose 
           email: regEmail.trim(),
           institution: regInstitution.trim() || 'Kolej Komuniti Beaufort',
           department: '',
+          overwrite,
         }),
       });
 
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 409 && data.error === 'DUPLICATE_IC') {
+          setShowOverwriteConfirm(true);
+          return;
+        }
         throw new Error(data.error || 'Gagal mendaftar pengguna');
       }
 
@@ -159,14 +169,26 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({ isOpen, onClose 
     }
   };
 
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await performRegister(false);
+  };
+
+  const handleConfirmOverwrite = async () => {
+    setShowOverwriteConfirm(false);
+    await performRegister(true);
+  };
+
   const handleClose = () => {
     setIsRegistering(false);
-    setIcInput('');
+    setEmailInput('');
+    setRegIc('');
     setRegName('');
     setRegPhone('');
     setRegEmail('');
-    setRegInstitution('Kolej Komuniti Beaufort');
+    setRegInstitution('KOLEJ KOMUNITI BEAUFORT');
     setError('');
+    setShowOverwriteConfirm(false);
     onClose();
   };
 
@@ -198,7 +220,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({ isOpen, onClose 
 
         {/* Form Body */}
         {!isRegistering ? (
-          /* Step 1: Check IC */
+          /* Step 1: Check Email */
           <form onSubmit={handleLookupOrLogin} noValidate className="p-6 space-y-4">
             {error && (
               <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start space-x-2 text-rose-700 text-xs">
@@ -209,25 +231,21 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({ isOpen, onClose 
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                No. Kad Pengenalan (MyKad) <span className="text-rose-500">*</span>
+                Alamat Emel <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
                 <input
-                  id="input-login-ic"
-                  type="text"
-                  value={icInput}
-                  onChange={handleIcChange}
-                  placeholder="Contoh: 880512-10-5431"
-                  maxLength={14}
+                  id="input-login-email"
+                  type="email"
+                  value={emailInput}
+                  onChange={(e) => { setError(''); setEmailInput(e.target.value); }}
+                  placeholder="Contoh: nama@test.com"
                   autoFocus
-                  className="w-full text-sm font-mono tracking-wider px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 focus:bg-white transition-all text-slate-900"
+                  className="w-full text-sm px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 focus:bg-white transition-all text-slate-900"
                 />
-                <span className="absolute right-3.5 top-2.5 text-xs text-slate-400 font-mono">
-                  {icInput.replace(/\D/g, '').length}/12
-                </span>
               </div>
               <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
-                Masukkan 12 digit nombor kad pengenalan anda untuk menyemak rekod atau mendaftar akaun pemohon.
+                Masukkan alamat emel anda untuk menyemak rekod atau mendaftar akaun pemohon baharu.
               </p>
             </div>
 
@@ -249,7 +267,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({ isOpen, onClose 
             <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start space-x-2 text-rose-800 text-xs">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
               <span>
-                No. Kad Pengenalan <strong>{icInput}</strong> belum wujud. Sila lengkapkan maklumat pendaftaran pengguna baharu di bawah.
+                Emel <strong>{emailInput}</strong> belum wujud dalam sistem. Sila lengkapkan maklumat pendaftaran pengguna baharu di bawah.
               </span>
             </div>
 
@@ -275,6 +293,26 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({ isOpen, onClose 
                 className="w-full text-xs uppercase px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:bg-white text-slate-900"
               />
               <p className="text-[10px] text-slate-400 mt-0.5">Nama akan disimpan secara automatik dalam huruf besar.</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                No. Kad Pengenalan (MyKad) <span className="text-rose-500">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  id="input-reg-ic"
+                  type="text"
+                  value={regIc}
+                  onChange={handleRegIcChange}
+                  placeholder="Contoh: 880512-10-5431"
+                  maxLength={14}
+                  className="w-full text-xs font-mono tracking-wider px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:bg-white text-slate-900"
+                />
+                <span className="absolute right-3 top-2 text-[10px] text-slate-400 font-mono">
+                  {regIc.replace(/\D/g, '').length}/12
+                </span>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-2.5">
@@ -314,9 +352,9 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({ isOpen, onClose 
               <input
                 type="text"
                 value={regInstitution}
-                onChange={(e) => setRegInstitution(e.target.value)}
-                placeholder="Contoh: Kolej Komuniti Beaufort"
-                className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:bg-white text-slate-900"
+                onChange={(e) => setRegInstitution(e.target.value.toUpperCase())}
+                placeholder="CONTOH: KOLEJ KOMUNITI BEAUFORT"
+                className="w-full text-xs uppercase px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:bg-white text-slate-900"
               />
             </div>
 
@@ -342,6 +380,34 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({ isOpen, onClose 
           </form>
         )}
       </div>
+
+      {/* Overwrite Confirmation Dialog */}
+      {showOverwriteConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <h4 className="font-bold text-slate-900 text-base">Sahkan Kemaskini Emel</h4>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              No Kad Pengenalan anda telah wujud, adakah anda pasti untuk mengemaskini emel baharu anda?
+            </p>
+            <div className="flex items-center justify-end space-x-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowOverwriteConfirm(false)}
+                className="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl transition-all"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmOverwrite}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-md shadow-red-600/20 transition-all"
+              >
+                YA
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
