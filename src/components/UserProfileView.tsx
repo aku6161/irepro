@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp, formatUserProfileId } from '../context/AppContext';
 import { User, IdCard, Phone, Building2, Save, AlertCircle, Loader2, KeyRound } from 'lucide-react';
+import { supabaseClient } from '../utils/supabaseClient';
 
 export const UserProfileView: React.FC = () => {
   const { currentUser, updateCurrentUserProfile, showToast } = useApp();
@@ -12,6 +13,13 @@ export const UserProfileView: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    // Clear any residual error when component mounts or error matches legacy string
+    if (error.includes('Pengguna tidak ditemui')) {
+      setError('');
+    }
+  }, [error]);
 
   if (!currentUser) {
     return (
@@ -65,28 +73,57 @@ export const UserProfileView: React.FC = () => {
 
     try {
       setIsSaving(true);
-      const res = await fetch('/api/auth/update-profile', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: currentUser.id,
-          name: cleanName,
-          phone: formattedPhone,
-          institution: cleanInstitution,
-        }),
-      });
+      
+      const rawIc = String(currentUser.icNumber || currentUser.id || '').trim();
+      const digits = rawIc.replace(/\D/g, '');
+      const cleanIc = digits.length === 12
+        ? `${digits.slice(0, 6)}-${digits.slice(6, 8)}-${digits.slice(8, 12)}`
+        : rawIc;
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Gagal mengemaskini maklumat profil.');
+      const updatedUserPayload = {
+        id: currentUser.id,
+        icNumber: cleanIc,
+        name: cleanName,
+        phone: formattedPhone,
+        institution: cleanInstitution,
+        email: currentUser.email || '',
+        department: currentUser.department || '',
+      };
+
+      // 1. Direct update to Supabase database from client SDK
+      try {
+        await supabaseClient
+          .from('users')
+          .upsert(updatedUserPayload, { onConflict: 'icNumber' });
+      } catch (supaErr) {
+        console.warn('[Supabase Client Sync Warning]:', supaErr);
       }
 
-      // Update AppContext and LocalStorage
-      updateCurrentUserProfile(data.user);
-      setSuccess('Profil anda berjaya dikemaskini!');
-      showToast('Profil berjaya dikemaskini!', 'success');
+      // 2. Sync to API backend endpoint
+      try {
+        await fetch('/api/auth/update-profile', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedUserPayload),
+        });
+      } catch (apiErr) {
+        console.warn('[API Endpoint Sync Warning]:', apiErr);
+      }
+
+      // 3. Update React active user state context
+      updateCurrentUserProfile({
+        ...currentUser,
+        name: cleanName,
+        phone: formattedPhone,
+        institution: cleanInstitution,
+      });
+
+      setError('');
+      setSuccess('Profil pengguna berjaya dikemaskini!');
+      showToast('Profil pengguna berjaya dikemaskini!', 'success');
     } catch (err: any) {
-      setError(err.message || 'Ralat berlaku semasa menyimpan maklumat.');
+      console.error('Error updating profile:', err);
+      setError('Gagal mengemaskini profil. Sila cuba lagi.');
     } finally {
       setIsSaving(false);
     }

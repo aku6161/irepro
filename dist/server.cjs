@@ -1271,6 +1271,12 @@ var ensureSyncedMiddleware = async (req, res, next) => {
   }
   next();
 };
+app.use((req, res, next) => {
+  if (req.url && !req.url.startsWith("/api/") && req.url !== "/api" && !req.url.startsWith("/assets/") && !req.url.startsWith("/@")) {
+    req.url = "/api" + (req.url.startsWith("/") ? "" : "/") + req.url;
+  }
+  next();
+});
 app.use(ensureSyncedMiddleware);
 function addAuditLog(user, action, applicationId, details) {
   const newLog = {
@@ -1321,6 +1327,11 @@ app.post("/api/auth/user-login", async (req, res) => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(cleanEmail)) {
     return res.status(400).json({ error: "Sila masukkan alamat emel yang sah (contoh: pengguna@test.com)." });
+  }
+  try {
+    await refreshFromSupabase();
+  } catch (err) {
+    console.warn("[iREPRO] refreshFromSupabase failed in user-login:", err);
   }
   const existingUser = db.users.find(
     (u) => u.email && u.email.trim().toLowerCase() === cleanEmail
@@ -1422,30 +1433,64 @@ app.post("/api/auth/admin-login", (req, res) => {
     }
   });
 });
-app.put("/api/auth/update-profile", async (req, res) => {
-  const { id, name, phone, institution } = req.body;
-  if (!id) {
-    return res.status(400).json({ error: "ID Pengguna diperlukan." });
+app.put(["/api/auth/update-profile", "/auth/update-profile", "/update-profile"], async (req, res) => {
+  const { id, icNumber, name, phone, institution } = req.body;
+  const rawIc = String(icNumber || id || "").trim();
+  const digits = rawIc.replace(/\D/g, "");
+  const cleanIc = digits.length === 12 ? `${digits.slice(0, 6)}-${digits.slice(6, 8)}-${digits.slice(8, 12)}` : rawIc;
+  if (!cleanIc && !id) {
+    return res.status(400).json({ error: "ID Pengguna atau No. Kad Pengenalan diperlukan." });
   }
-  const existing = db.users.find((u) => u.id === id);
-  if (!existing) {
-    return res.status(404).json({ error: "Pengguna tidak ditemui." });
+  try {
+    await refreshFromSupabase();
+  } catch (err) {
+    console.warn("[iREPRO] refreshFromSupabase failed in update-profile:", err);
   }
-  if (name) existing.name = name.trim().toUpperCase();
-  if (phone) existing.phone = phone.trim();
-  if (institution) existing.institution = institution.trim().toUpperCase();
-  const { error: updateError } = await supabase.from("users").upsert(existing, { onConflict: "icNumber" });
-  if (updateError) {
-    console.error("[Supabase] Error updating user profile:", updateError);
-    return res.status(500).json({ error: "Gagal mengemaskini profil di database." });
+  let existing = db.users.find(
+    (u) => u.id === id || u.icNumber === cleanIc || u.icNumber === icNumber || digits && u.icNumber?.replace(/\D/g, "") === digits
+  );
+  if (!existing && cleanIc) {
+    try {
+      const { data: supaUsers } = await supabase.from("users").select("*").eq("icNumber", cleanIc);
+      if (supaUsers && supaUsers.length > 0) {
+        existing = supaUsers[0];
+      }
+    } catch (e) {
+      console.error("[Supabase] Direct query failed:", e);
+    }
+  }
+  const updatedUser = {
+    id: existing?.id || id || (digits ? `usr-${digits.slice(-4)}` : `usr-${Date.now()}`),
+    icNumber: existing?.icNumber || cleanIc || rawIc,
+    name: (name || existing?.name || "").trim().toUpperCase(),
+    phone: phone ? phone.trim() : existing?.phone || "",
+    email: existing?.email || "",
+    institution: (institution || existing?.institution || "").trim().toUpperCase(),
+    department: existing?.department || "",
+    createdAt: existing?.createdAt || (/* @__PURE__ */ new Date()).toISOString()
+  };
+  const { error: upsertError } = await supabase.from("users").upsert(updatedUser, { onConflict: "icNumber" });
+  if (upsertError) {
+    console.error("[Supabase] Error saving user profile:", upsertError);
+    const { error: idUpsertError } = await supabase.from("users").upsert(updatedUser);
+    if (idUpsertError) {
+      console.error("[Supabase] Fallback upsert failed:", idUpsertError);
+      return res.status(500).json({ error: "Gagal mengemaskini profil di pangkalan data Supabase." });
+    }
+  }
+  const idx = db.users.findIndex((u) => u.icNumber === updatedUser.icNumber || u.id === updatedUser.id);
+  if (idx >= 0) {
+    db.users[idx] = updatedUser;
+  } else {
+    db.users.push(updatedUser);
   }
   addAuditLog(
-    `${existing.icNumber} (${existing.name})`,
-    "Update application",
+    `${updatedUser.icNumber} (${updatedUser.name})`,
+    "Update profile",
     void 0,
-    "Kemaskini maklumat profil pengguna"
+    "Kemaskini maklumat profil pengguna ke Supabase"
   );
-  return res.json({ success: true, user: existing });
+  return res.json({ success: true, user: updatedUser, message: "Profil pengguna berjaya dikemaskini!" });
 });
 app.get("/api/users", async (req, res) => {
   res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
