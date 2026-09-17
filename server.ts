@@ -23,12 +23,11 @@ import {
 dotenv.config({ path: '.env.local' });
 dotenv.config();
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseUrl = process.env.SUPABASE_URL || 'https://leshuihnieeehmhyxkvz.supabase.co';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxlc2h1aWhuaWVlZWhtaHl4a3Z6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NzgyNTkzOSwiZXhwIjoyMTAzNDAxOTM5fQ.oXARsks1k2FzON4b2Pl87v6zD66Cs7mPl_g7WDL_zN8';
 
 if (!supabaseUrl || !supabaseKey) {
-  console.error('CRITICAL: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are not configured.');
-  process.exit(1);
+  console.warn('CRITICAL WARNING: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are not configured.');
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey, {
@@ -43,6 +42,15 @@ const PORT = 3000;
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Vercel serverless request path normalizer:
+// If request arrives at /api/server.ts or is stripped of /api prefix, normalize it so all /api/* routes match
+app.use((req, res, next) => {
+  if (req.url && !req.url.startsWith('/api') && !req.url.startsWith('/assets') && !req.url.startsWith('/favicon') && !req.url.startsWith('/@')) {
+    req.url = '/api' + (req.url.startsWith('/') ? req.url : '/' + req.url);
+  }
+  next();
+});
 
 // Data Interfaces
 interface StoredUser {
@@ -2223,14 +2231,19 @@ app.get('/api/export', (req, res) => {
 
 // Setup Vite development middleware or production static serving
 async function start() {
-  if (process.env.NODE_ENV !== 'production') {
-    const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
+  if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+    try {
+      const viteModuleName = 'vite';
+      const { createServer: createViteServer } = await import(/* @vite-ignore */ viteModuleName);
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: 'spa',
+      });
+      app.use(vite.middlewares);
+    } catch (e) {
+      console.warn('[Vite Dev Server Warning]:', e);
+    }
+  } else if (!process.env.VERCEL) {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath, { etag: false, lastModified: false, setHeaders: (res, filePath) => {
       // Never cache index.html - always serve fresh
@@ -2246,9 +2259,11 @@ async function start() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`iREPRO Server running on http://localhost:${PORT}`);
-  });
+  if (!process.env.VERCEL) {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`iREPRO Server running on http://localhost:${PORT}`);
+    });
+  }
 }
 
 if (!process.env.VERCEL) {

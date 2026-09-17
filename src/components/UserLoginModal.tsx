@@ -77,9 +77,18 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({ isOpen, onClose 
         }),
       });
 
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        const text = await res.text().catch(() => '');
+        if (!res.ok) {
+          throw new Error(text || `Ralat pelayan (${res.status}). Sila cuba sebentar lagi.`);
+        }
+      }
+
       if (!res.ok) {
-        throw new Error(data.message || data.error || 'Gagal log masuk');
+        throw new Error(data.message || data.error || `Gagal log masuk (${res.status})`);
       }
 
       if (data.exists && data.user) {
@@ -149,13 +158,22 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({ isOpen, onClose 
         }),
       });
 
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        const text = await res.text().catch(() => '');
+        if (!res.ok) {
+          throw new Error(text || `Ralat pelayan (${res.status}). Sila cuba sebentar lagi.`);
+        }
+      }
+
       if (!res.ok) {
         if (res.status === 409 && data.error === 'DUPLICATE_IC') {
           setShowOverwriteConfirm(true);
           return;
         }
-        throw new Error(data.error || 'Gagal mendaftar pengguna');
+        throw new Error(data.error || `Gagal mendaftar pengguna (${res.status})`);
       }
 
       loginUser(data.user);

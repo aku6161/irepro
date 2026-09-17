@@ -32,9 +32,18 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ isOpen, onClos
         body: JSON.stringify({ password: password.trim() }),
       });
 
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        const text = await res.text().catch(() => '');
+        if (!res.ok) {
+          throw new Error(text || `Ralat pelayan (${res.status}). Sila cuba sebentar lagi.`);
+        }
+      }
+
       if (!res.ok) {
-        throw new Error(data.error || 'Kata laluan tidak sah');
+        throw new Error(data.error || `Kata laluan tidak sah (${res.status})`);
       }
 
       loginAdmin();

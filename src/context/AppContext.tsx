@@ -251,7 +251,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       setIsLoading(true);
       const res = await fetch('/api/sheets/pull', { method: 'POST' });
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        const text = await res.text().catch(() => '');
+        if (!res.ok) throw new Error(text || `Ralat pelayan (${res.status})`);
+      }
       if (res.ok) {
         showToast(data.message || 'Data Google Sheets berjaya ditarik!', 'success');
         await refreshData();
@@ -259,7 +265,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         showToast(data.error || 'Gagal menarik data dari Google Sheets', 'error');
       }
     } catch (err: any) {
-      showToast('Ralat sambungan ke pelayan Google Sheets', 'error');
+      showToast(err.message || 'Ralat sambungan ke pelayan Google Sheets', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -278,14 +284,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         headers,
         body: JSON.stringify({ applicationId: appId }),
       });
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        const text = await res.text().catch(() => '');
+        if (!res.ok) throw new Error(text || `Ralat pelayan (${res.status})`);
+      }
       if (res.ok) {
         showToast(`Rekod diselaraskan ke sheet "${data.targetSheet}"!`, 'success');
       } else {
         showToast(data.error || 'Gagal menyelaraskan rekod ke Google Sheets', 'error');
       }
     } catch (err: any) {
-      showToast('Ralat semasa menghantar ke Google Sheets', 'error');
+      showToast(err.message || 'Ralat semasa menghantar ke Google Sheets', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -322,12 +334,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         body: JSON.stringify(data),
       });
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Gagal menyimpan permohonan');
+      let result: any = {};
+      try {
+        result = await res.json();
+      } catch {
+        const text = await res.text().catch(() => '');
+        if (!res.ok) throw new Error(text || `Ralat pelayan (${res.status})`);
       }
 
-      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.error || `Gagal menyimpan permohonan (${res.status})`);
+      }
+
       await refreshData();
       showToast(`Permohonan berjaya direkodkan ke Google Sheets (${result.targetSheet || 'Pangkalan Data'})!`, 'success');
       return result.application;
@@ -345,12 +363,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         body: JSON.stringify(data),
       });
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Gagal mengemaskini permohonan');
+      let result: any = {};
+      try {
+        result = await res.json();
+      } catch {
+        const text = await res.text().catch(() => '');
+        if (!res.ok) throw new Error(text || `Ralat pelayan (${res.status})`);
       }
 
-      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.error || `Gagal mengemaskini permohonan (${res.status})`);
+      }
+
       await refreshData();
       showToast('Data berjaya dikemaskini!', 'success');
       return result.application;
@@ -366,9 +390,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         method: 'DELETE',
       });
 
+      let result: any = {};
+      try {
+        result = await res.json();
+      } catch {
+        const text = await res.text().catch(() => '');
+        if (!res.ok) throw new Error(text || `Ralat pelayan (${res.status})`);
+      }
+
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Gagal memadam permohonan');
+        throw new Error(result.error || `Gagal memadam permohonan (${res.status})`);
       }
 
       await refreshData();
