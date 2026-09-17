@@ -254,36 +254,11 @@ export const AdminDashboard: React.FC = () => {
 
     const rawList = Array.from(map.values());
 
-    // Priority mapping helper:
-    // 1 -> SHAMSUDDIN BIN AMIN (usr-0001)
-    // 2 -> REZIELLA BINTI LAHAJI (usr-0002)
-    // 3 -> NORFAZIRAH BINTI KUSIN (usr-0003)
-    // 4 -> AHMAD KHUDRI BIN SHAMSUDDIN (usr-0004)
-    const getPriority = (name: string): number => {
-      const n = (name || '').toUpperCase().trim();
-      if (n.startsWith('SHAMSUDDIN BIN AMIN') || n === 'SHAMSUDDIN BIN AMIN') return 1;
-      if (n.startsWith('REZIELLA') || n.includes('REZIELLA BINTI LAHAJI')) return 2;
-      if (n.startsWith('NORFAZIRAH') || n.includes('NORFAZIRAH BINTI KUSIN')) return 3;
-      if (n.startsWith('AHMAD KHUDRI') || n.includes('AHMAD KHUDRI BIN SHAMSUDDIN')) return 4;
-      return 999;
-    };
-
-    rawList.sort((a, b) => {
-      const pA = getPriority(a.name);
-      const pB = getPriority(b.name);
-      if (pA !== pB) return pA - pB;
-      return (a.name || '').localeCompare(b.name || '');
-    });
+    rawList.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
     return rawList.map((u, idx) => {
-      const numStr = String(idx + 1).padStart(4, '0');
-      let formattedId = `usr-${numStr}`;
-      const n = (u.name || '').toUpperCase().trim();
-      if (n.startsWith('SHAMSUDDIN BIN AMIN') || n === 'SHAMSUDDIN BIN AMIN') formattedId = 'usr-0001';
-      else if (n.startsWith('REZIELLA') || n.includes('REZIELLA BINTI LAHAJI')) formattedId = 'usr-0002';
-      else if (n.startsWith('NORFAZIRAH') || n.includes('NORFAZIRAH BINTI KUSIN')) formattedId = 'usr-0003';
-      else if (n.startsWith('AHMAD KHUDRI') || n.includes('AHMAD KHUDRI BIN SHAMSUDDIN')) formattedId = 'usr-0004';
-      else {
+      let formattedId = u.id;
+      if (!formattedId || !/^usr-\d{4}$/.test(formattedId)) {
         formattedId = `usr-${String(idx + 1).padStart(4, '0')}`;
       }
 
@@ -388,7 +363,7 @@ export const AdminDashboard: React.FC = () => {
                     <tr key={u.id || u.icNumber || idx} className="hover:bg-slate-50/80 transition-colors">
                       <td className="py-3.5 px-4 font-mono font-bold whitespace-nowrap">
                         <span className="bg-indigo-50 border border-indigo-100 text-indigo-700 px-2.5 py-1 rounded-lg text-[11px]">
-                          {u.id || `USR-${1000 + idx + 1}`}
+                          {u.id || `usr-${String(idx + 1).padStart(4, '0')}`}
                         </span>
                       </td>
                       <td className="py-3.5 px-4">

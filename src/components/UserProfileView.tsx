@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useApp, formatUserProfileId } from '../context/AppContext';
 import { User, IdCard, Phone, Building2, Save, AlertCircle, Loader2, KeyRound } from 'lucide-react';
-import { supabaseClient } from '../utils/supabaseClient';
 
 export const UserProfileView: React.FC = () => {
+
   const { currentUser, updateCurrentUserProfile, showToast } = useApp();
 
   const [name, setName] = useState(currentUser?.name || '');
@@ -90,16 +90,7 @@ export const UserProfileView: React.FC = () => {
         department: currentUser.department || '',
       };
 
-      // 1. Direct update to Supabase database from client SDK
-      try {
-        await supabaseClient
-          .from('users')
-          .upsert(updatedUserPayload, { onConflict: 'icNumber' });
-      } catch (supaErr) {
-        console.warn('[Supabase Client Sync Warning]:', supaErr);
-      }
-
-      // 2. Sync to API backend endpoint
+      // Sync profile update to backend server API endpoint (which handles Supabase update securely)
       try {
         await fetch('/api/auth/update-profile', {
           method: 'PUT',

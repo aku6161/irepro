@@ -82,7 +82,7 @@ interface StoredApplication {
 interface AuditLog {
   id: string;
   user: string;
-  action: 'Login' | 'Pendaftaran' | 'Create application' | 'Update application' | 'Generate document' | 'Delete application' | 'Admin action' | 'Backup';
+  action: 'Login' | 'Pendaftaran' | 'Create application' | 'Update application' | 'Generate document' | 'Delete application' | 'Admin action' | 'Backup' | 'Update profile';
   applicationId?: string;
   details?: string;
   timestamp: string;
@@ -143,6 +143,18 @@ const initialUsers: StoredUser[] = [
     createdAt: '2025-01-03T09:15:00.000Z',
   },
 ];
+
+function formatUserId(u: { name?: string; icNumber?: string; id?: string }, index?: number): string {
+  if (u.id && /^usr-\d{4}$/.test(u.id)) return u.id;
+  if (index !== undefined) return `usr-${String(index + 1).padStart(4, '0')}`;
+
+  const existingNums = db.users
+    .map(user => user.id)
+    .filter(id => /^usr-\d{4}$/.test(id))
+    .map(id => parseInt(id.replace('usr-', ''), 10));
+  const maxNum = existingNums.length > 0 ? Math.max(...existingNums) : 0;
+  return `usr-${String(maxNum + 1).padStart(4, '0')}`;
+}
 
 const initialApplications: StoredApplication[] = [
   {
@@ -523,7 +535,25 @@ async function refreshFromSupabase(): Promise<boolean> {
       const { data: auditLogs, error: logError } = await supabase.from('audit_logs').select('*');
       if (logError) throw logError;
 
-      db.users = users || [];
+      const formattedUsers = (users || []).map((u, idx) => ({
+        ...u,
+        id: formatUserId(u, idx)
+      }));
+      db.users = formattedUsers;
+
+      // Automatically sync formatted usr-XXXX IDs back to Supabase database
+      const usersNeedingSync = formattedUsers.filter((fUser, idx) => {
+        const orig = (users || [])[idx];
+        return !orig || orig.id !== fUser.id;
+      });
+
+      if (usersNeedingSync.length > 0) {
+        supabase.from('users').upsert(usersNeedingSync, { onConflict: 'icNumber' }).then(({ error }) => {
+          if (error) console.error('[Supabase Auto-Sync Error]:', error);
+          else console.log(`[Supabase Auto-Sync Success] Synchronized ${usersNeedingSync.length} user IDs to format usr-XXXX in Supabase.`);
+        });
+      }
+
       db.applications = (applications || []).map(a => ({
         ...a,
         generatedDocuments: a.generatedDocuments || [],
@@ -567,13 +597,6 @@ const ensureSyncedMiddleware = async (req: any, res: any, next: any) => {
   }
   next();
 };
-
-app.use((req, res, next) => {
-  if (req.url && !req.url.startsWith('/api/') && req.url !== '/api' && !req.url.startsWith('/assets/') && !req.url.startsWith('/@')) {
-    req.url = '/api' + (req.url.startsWith('/') ? '' : '/') + req.url;
-  }
-  next();
-});
 
 app.use(ensureSyncedMiddleware);
 
@@ -627,10 +650,27 @@ function generateApplicationId(): string {
 // API ROUTES
 // ==========================================
 
-// 1. Health check
+// 1. Health check & Keep-alive endpoints
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', system: 'iREPRO API Engine', time: new Date().toISOString() });
 });
+
+// Keep-alive ping endpoint to prevent Supabase 7-day inactivity pause
+app.get('/api/keepalive', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('users').select('id').limit(1);
+    if (error) throw error;
+    res.json({
+      status: 'ok',
+      message: 'Supabase database keep-alive ping successful',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    console.error('[Supabase Keepalive Error]:', err);
+    res.status(500).json({ error: err?.message || 'Keepalive ping failed' });
+  }
+});
+
 
 // 2. User Authentication (Email login)
 app.post('/api/auth/user-login', async (req, res) => {
@@ -731,7 +771,7 @@ app.post('/api/auth/register-user', async (req, res) => {
   }
 
   const newUser: StoredUser = {
-    id: `usr-${Date.now()}`,
+    id: formatUserId({ name, icNumber: cleanIc }),
     icNumber: cleanIc,
     name: name.trim().toUpperCase(),
     phone: phone?.trim() || '',
@@ -826,7 +866,7 @@ app.put(['/api/auth/update-profile', '/auth/update-profile', '/update-profile'],
 
   // 3. Construct updated user object (update existing or create new record for Supabase)
   const updatedUser: StoredUser = {
-    id: existing?.id || id || (digits ? `usr-${digits.slice(-4)}` : `usr-${Date.now()}`),
+    id: formatUserId({ name: name || existing?.name, icNumber: existing?.icNumber || cleanIc || rawIc, id: existing?.id || id }),
     icNumber: existing?.icNumber || cleanIc || rawIc,
     name: (name || existing?.name || '').trim().toUpperCase(),
     phone: phone ? phone.trim() : (existing?.phone || ''),

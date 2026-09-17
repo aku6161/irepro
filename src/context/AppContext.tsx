@@ -60,20 +60,19 @@ const GOOGLE_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/folders/1egXO2Qr
 
 export const formatUserProfileId = (user: UserProfile): UserProfile => {
   if (!user) return user;
-  const n = (user.name || '').toUpperCase().trim();
   let id = user.id;
 
-  if (n.startsWith('SHAMSUDDIN BIN AMIN') || n === 'SHAMSUDDIN BIN AMIN' || n.includes('SHAMSUDDIN BIN AMIN')) {
+  if (id && /^usr-\d{4}$/.test(id)) {
+    return user;
+  }
+
+  const digits = (id || user.icNumber || '').replace(/\D/g, '');
+  if (digits) {
+    const num = parseInt(digits.slice(-4), 10);
+    const validNum = isNaN(num) || num === 0 ? 1 : num;
+    id = `usr-${String(validNum).padStart(4, '0')}`;
+  } else {
     id = 'usr-0001';
-  } else if (n.startsWith('REZIELLA') || n.includes('REZIELLA BINTI LAHAJI')) {
-    id = 'usr-0002';
-  } else if (n.startsWith('NORFAZIRAH') || n.includes('NORFAZIRAH BINTI KUSIN')) {
-    id = 'usr-0003';
-  } else if (n.startsWith('AHMAD KHUDRI') || n.includes('AHMAD KHUDRI BIN SHAMSUDDIN')) {
-    id = 'usr-0004';
-  } else if (!id || !/^usr-\d{4}$/.test(id)) {
-    const digits = (user.icNumber || '').replace(/\D/g, '');
-    id = digits ? `usr-${digits.slice(-4).padStart(4, '0')}` : 'usr-0005';
   }
 
   return {
