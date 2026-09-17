@@ -794,6 +794,16 @@ var PORT = 3e3;
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use((req, res, next) => {
+  const matchedPath = req.headers["x-matched-path"] || req.headers["x-forwarded-uri"];
+  if (matchedPath && matchedPath.startsWith("/api")) {
+    req.url = matchedPath;
+  } else if (req.url && (req.url.startsWith("/api/index.js") || req.url.startsWith("/api/server.ts"))) {
+    const parsed = new URL(req.url, "http://localhost");
+    const pathArg = parsed.searchParams.get("0") || parsed.searchParams.get("1");
+    if (pathArg) {
+      req.url = "/api/" + pathArg.replace(/^\//, "");
+    }
+  }
   if (req.url && !req.url.startsWith("/api") && !req.url.startsWith("/assets") && !req.url.startsWith("/favicon") && !req.url.startsWith("/@")) {
     req.url = "/api" + (req.url.startsWith("/") ? req.url : "/" + req.url);
   }
@@ -2598,6 +2608,18 @@ app.get("/api/export", (req, res) => {
   res.setHeader("Content-Disposition", `attachment; filename="iREPRO_Rekod_${type || "Semua"}_${year || "Semua"}.csv"`);
   res.send(csvContent);
 });
+app.use((req, res, next) => {
+  if (req.url.startsWith("/api/") || req.path.startsWith("/api/")) {
+    return res.status(404).json({ error: `API endpoint tidak ditemui: ${req.method} ${req.url}` });
+  }
+  next();
+});
+app.use((err, req, res, next) => {
+  console.error("[iREPRO Server Uncaught Error]:", err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: err?.message || "Ralat dalaman pelayan" });
+  }
+});
 async function start() {
   if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
     try {
@@ -2637,7 +2659,10 @@ async function start() {
 if (!process.env.VERCEL) {
   start();
 }
-var server_default = app;
+function handler(req, res) {
+  return app(req, res);
+}
 export {
-  server_default as default
+  app,
+  handler as default
 };
