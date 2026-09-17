@@ -6,7 +6,9 @@ import Docxtemplater from 'docxtemplater';
 import PDFDocument from 'pdfkit';
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
-import ws from 'ws';
+import WebSocket from 'ws';
+
+const wsTransport = typeof WebSocket === 'function' ? WebSocket : (WebSocket as any)?.default || (WebSocket as any)?.WebSocket;
 import {
   GOOGLE_SPREADSHEET_ID,
   GOOGLE_DRIVE_FOLDER,
@@ -32,9 +34,7 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: { persistSession: false },
-  realtime: {
-    transport: ws,
-  },
+  ...(wsTransport ? { realtime: { transport: wsTransport } } : {}),
 });
 
 const app = express();
