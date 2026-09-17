@@ -19,7 +19,7 @@ import {
   formatIc,
   formatDateForSheet,
   parseSheetDate,
-} from './server/googleSheets.ts';
+} from './services/googleSheets.ts';
 
 // Load env variables
 dotenv.config({ path: '.env.local' });
@@ -556,10 +556,13 @@ async function refreshFromSupabase(): Promise<boolean> {
       });
 
       if (usersNeedingSync.length > 0) {
-        supabase.from('users').upsert(usersNeedingSync, { onConflict: 'icNumber' }).then(({ error }) => {
-          if (error) console.error('[Supabase Auto-Sync Error]:', error);
-          else console.log(`[Supabase Auto-Sync Success] Synchronized ${usersNeedingSync.length} user IDs to format usr-XXXX in Supabase.`);
-        });
+        supabase.from('users').upsert(usersNeedingSync, { onConflict: 'icNumber' }).then(
+          ({ error }) => {
+            if (error) console.error('[Supabase Auto-Sync Error]:', error);
+            else console.log(`[Supabase Auto-Sync Success] Synchronized ${usersNeedingSync.length} user IDs to format usr-XXXX in Supabase.`);
+          },
+          (e: any) => console.error('[Supabase Auto-Sync Exception]:', e)
+        );
       }
 
       db.applications = (applications || []).map(a => ({
@@ -586,11 +589,11 @@ async function refreshFromSupabase(): Promise<boolean> {
   return activeSyncPromise;
 }
 
-// Initial sync on server start
-initialSyncPromise = refreshFromSupabase();
-
+// Ensure cache is synced on demand during request handling
 const ensureSyncedMiddleware = async (req: any, res: any, next: any) => {
-  if (req.path.startsWith('/api/') && req.path !== '/api/health') {
+  const url = req.url || '';
+  const isHealth = url === '/api/health' || url === '/health';
+  if (!isHealth) {
     const now = Date.now();
     const lastSyncMs = new Date(lastSyncTime).getTime();
     
@@ -624,16 +627,23 @@ function addAuditLog(user: string, action: AuditLog['action'], applicationId?: s
   db.auditLogs.unshift(newLog);
 
   // Write to Supabase asynchronously in the background
-  supabase.from('audit_logs').insert({
-    id: newLog.id,
-    user: newLog.user,
-    action: newLog.action,
-    applicationId: newLog.applicationId || null,
-    details: newLog.details || null,
-    timestamp: newLog.timestamp
-  }).then(({ error }) => {
-    if (error) console.error('[Supabase] Failed to write audit log:', error);
-  });
+  try {
+    supabase.from('audit_logs').insert({
+      id: newLog.id,
+      user: newLog.user,
+      action: newLog.action,
+      applicationId: newLog.applicationId || null,
+      details: newLog.details || null,
+      timestamp: newLog.timestamp
+    }).then(
+      ({ error }) => {
+        if (error) console.error('[Supabase] Failed to write audit log:', error);
+      },
+      (e: any) => console.error('[Supabase audit log catch]:', e)
+    );
+  } catch (err) {
+    console.error('[Supabase audit log error]:', err);
+  }
 }
 
 // Generate unique sequential Application ID (Unified global format: iREPRO-00026, iREPRO-00027, etc.)
