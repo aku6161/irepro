@@ -17,7 +17,7 @@ import {
   formatIc,
   formatDateForSheet,
   parseSheetDate,
-} from './server/googleSheets.js';
+} from './server/googleSheets.ts';
 
 // Load env variables
 dotenv.config({ path: '.env.local' });
